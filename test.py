@@ -1,13 +1,14 @@
-import paho.mqtt.client as mqtt
 import time
 import json
 import threading
 import logging
-import RPi.GPIO as GPIO
 import datetime
+import paho.mqtt.client as mqtt
+import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
+
 
 class Input:
     def __init__(self, gpio, label=None, delay=False):
@@ -27,12 +28,19 @@ class Input:
 
 
 class Output:
-    def __init__(self, gpio):
+    def __init__(self, gpio, label=None, debug=False):
         self.gpio = gpio
+        self.label = label
+        self.debug = debug
+
+    def __str__(self):
+        return self.label
 
     def set(self, state):
-        if self.get != state:
+        if self.get() != state:
             GPIO.output(self.gpio, state)
+            if self.debug:
+                logging.debug(f"Output: {self} set to {state}")
 
     def get(self):
         return GPIO.input(self.gpio) == 1
@@ -56,18 +64,18 @@ class Sensor:
 
 inputs = {
     "tamper": Input(5, "Tamper"),
-    "zone1": Input(6, "Hallway 1st floor", True),
+    #"zone1": Input(6, "Hallway 1st floor", True),
     #"zone2": Input(13, "Hallway 2st floor"),
     #"zone3": Input(19),
     #"zone4": Input(26)
 }
 
 outputs = {
-    "led_red": Output(14),
-    "led_green": Output(15),
-    "buzzer": Output(2),
-    "siren1": Output(3),
-    "siren2": Output(4)
+    "led_red": Output(14, "Red LED"),
+    "led_green": Output(15, "Green LED"),
+    "buzzer": Output(2, "Buzzer"),
+    "siren1": Output(3, "Siren indoor", True),
+    "siren2": Output(4, "Siren outdoor", True)
 }
 
 sensors = {
@@ -76,9 +84,14 @@ sensors = {
     "motion2": Sensor("zigbee2mqtt/Motion 2nd floor", "occupancy", True, "2nd floor")
 }
 
+zones = inputs | sensors
+
 codes = {
     "1234": "Test"
 }
+
+format = "%(asctime)s - %(levelname)s: %(message)s"
+logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
 
 for key, input in inputs.items():
     GPIO.setup(input.gpio, GPIO.IN)
@@ -87,19 +100,14 @@ for key, output in outputs.items():
     GPIO.setup(output.gpio, GPIO.OUT)
     output.set(False)
 
+
 class State:
 
     def __init__(self):
         self.data = {
             "state": "disarmed",
-            "tamper": False,
-            "zones": {
-                "zone1": False,
-                "zone2": False,
-                "zone3": False,
-                "zone4": False,
-                "tamper": False
-            },
+            "clear": False,
+            "zones": {},
             "triggered": {
                 "zone": None,
                 "timestamp": None
@@ -120,6 +128,7 @@ class State:
 
     def publish(self):
         client.publish('home/alarm_test', self.json())
+        #logging.debug("Published state object")
 
     @property
     def system(self):
@@ -128,7 +137,7 @@ class State:
     @system.setter
     def system(self, state):
         with self._lock:
-            logging.info("System state changed to: " + state)
+            logging.warning(f"System state changed to: {state}")
             self.data["state"] = state
             self.publish()
 
@@ -141,56 +150,90 @@ class State:
     def zone(self, zone, value):
         if self.data["zones"][zone] != value:
             self.data["zones"][zone] = value
+            self.data["clear"] = not any(self.data["zones"].values())
+            logging.info(f"Zone: {zones[zone]} changed to {value}, clear is {self.data['clear']}")
             self.publish()
-            print(json.dumps(self.data, indent=4, sort_keys=True))
+            #print(json.dumps(self.data, indent=4, sort_keys=True))
+
 
 def buzzer(i, x, current_state):
+    logging.info(f"Buzzer loop started ({i}, {x})")
+
     for _ in range(i):
         outputs["led_red"].set(True)
         time.sleep(x[0])
         outputs["led_red"].set(False)
         time.sleep(x[1])
+
         if state.system != current_state:
+            logging.info("Buzzer loop aborted")
             return False
+
+    logging.info("Buzzer loop completed")
     return True
 
-def siren(i, type, current_state):
+
+def siren(i, kind, current_state):
+    logging.info(f"Siren loop started ({i}, {kind})")
+
     for x in range(i):
-        if type == "burglary":
-            outputs["led_red"].set(True)
-            outputs["siren1"].set(True)
-            print("Burglary: " + str(x))
-            if x > (i/3):
-                print("Outdoor siren")
-                outputs["siren2"].set(True)
+        outputs["led_red"].set(True)
+        outputs["siren1"].set(True)
+
+        if x > (i/3) and kind in ["burglary"]:
+            outputs["siren2"].set(True)
+
+        if kind == "burglary":
             time.sleep(1)
+
+        if kind == "tamper":
+            time.sleep(0.5)
+            outputs["led_red"].set(False)
+            outputs["siren1"].set(False)
+            time.sleep(0.5)
+
         if state.system != current_state:
             outputs["led_red"].set(False)
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
+            logging.info("Siren loop aborted")
             return False
+
     outputs["led_red"].set(False)
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
+
+    logging.info("Siren loop completed")
     return True
+
 
 def arming():
     state.system = "arming"
     if buzzer(10, [0.1, 0.9], "arming") is True:
-        state.system = "armed_away"
+        if state.data["clear"]:
+            state.system = "armed_away"
+        else:
+            logging.error("Unable to arm, zones not clear")
+            state.system = "disarmed"
+
 
 def pending(current_state, zone):
     state.system = "pending"
-    logging.warning("Pending!")
+    logging.info(f"Pending because of zone: {zone}")
+
     if buzzer(10, [0.5, 0.5], "pending") is True:
         triggered(current_state, zone)
+
 
 def triggered(current_state, zone):
     with triggered_lock:
         state.triggered(zone)
-        logging.warning("Triggered!")
-        if siren(30, "burglary", "triggered") is True:
+        logging.info(f"Triggered because of zone: {zone}")
+
+        zone_str = "tamper" if str(zone) == "Tamper" else "burglary"
+        if siren(30, zone_str, "triggered") is True:
             state.system = current_state
+
 
 def run_led():
     while True:
@@ -202,17 +245,23 @@ def run_led():
         time.sleep(0.1)
         outputs["led_green"].set(False)
 
-def check(zone, delayed = False):
-    if state.system != "triggered" and str(zone) == "Tamper":
-        x = threading.Thread(target=triggered, args=(state.system,zone,))
-        x.start()
+
+def check(zone, delayed=False):
+    #if state.system != "triggered" and str(zone) == "Tamper":
+    #    x = threading.Thread(target=triggered, args=(state.system,zone,))
+    #    x.start()
 
     if state.system == "armed_away":
         if delayed:
-            x = threading.Thread(target=pending, args=("armed_away",zone,))
+            x = threading.Thread(target=pending, args=("armed_away", zone,))
             x.start()
         elif not triggered_lock.locked():
-            x = threading.Thread(target=triggered, args=("armed_away",zone,))
+            x = threading.Thread(target=triggered, args=("armed_away", zone,))
+            x.start()
+
+    if state.system == "armed_home":
+        if zone in [zones["door1"], zones["tamper"]]:
+            x = threading.Thread(target=triggered, args=("armed_home", zone,))
             x.start()
 
 
@@ -228,11 +277,12 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("zigbee2mqtt/Motion 2nd floor")
     client.subscribe("zigbee2mqtt/Motion kitchen")
 
-    if rc==0:
-        client.connected_flag=True
+    if rc == 0:
+        client.connected_flag = True
         client.publish("home/alarm_test/availability", "online")
     else:
-        client.bad_connection_flag=True
+        client.bad_connection_flag = True
+
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
@@ -270,24 +320,24 @@ def on_message(client, userdata, msg):
         if action == "arm_day_zones" and code in codes:
             state.system = "armed_home"
 
-        if y["tamper"] == True:
-            check(0, False)
+        if y["tamper"] is True:
+            check("Panel tamper", False)
 
     if msg.topic == "zigbee2mqtt/Door front":
-        if y["contact"] == False:
-            check(1, True)
+        state.zone("door1", y["contact"] is False)
+        if y["contact"] is False:
+            check(sensors["door1"], True)
 
     if msg.topic == "zigbee2mqtt/Motion kitchen":
-       if y["occupancy"] == True:
-           check(2, False)
+        state.zone("motion1", y["occupancy"] is True)
+        if y["occupancy"] is True:
+            check(sensors["motion1"], False)
 
     if msg.topic == "zigbee2mqtt/Motion 2nd floor":
-       if y["occupancy"] == True:
-           check(3, False)
+        state.zone("motion2", y["occupancy"] is True)
+        if y["occupancy"] is True:
+            check(sensors["motion2"], False)
 
-
-format = "%(asctime)s - %(levelname)s: %(message)s"
-logging.basicConfig(format=format, level=logging.DEBUG,datefmt="%H:%M:%S")
 
 client = mqtt.Client('alarm-test')
 client.on_connect = on_connect
@@ -296,7 +346,21 @@ client.will_set("home/alarm_test/availability", "offline")
 client.connect("mqtt.lan.uctrl.net")
 client.loop_start()
 
+#discover_1 = {
+#    "name": "test",
+#    "device_class": "motion",
+#    "state_topic": "home/alarm_test",
+#    "value_template": "{{ value_json.zones.zone1 }}"
+#}
+
+#client.publish('homeassistant/binary_sensor/alarm_zone_1/config', json.dumps(discover_1))
+
+
 state = State()
+
+for z in zones:
+    state.data["zones"][z] = False
+
 state.publish()
 
 triggered_lock = threading.Lock()
@@ -308,14 +372,8 @@ if __name__ == "__main__":
     while True:
         time.sleep(0.01)
 
-        #print(json.dumps(state.data, indent=4, sort_keys=True))
-
-        #if GPIO.input(inputs["tamper"]) == 1 and debounce[0] == 0:
-            #debounce[0] = 10
-            #check("Tamper", True)
-
         for z in inputs:
+            state.zone(z, inputs[z].get())
+
             if inputs[z].is_true:
                 check(inputs[z], inputs[z].delay)
-
-            state.zone(z, inputs[z].get())
