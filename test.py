@@ -11,9 +11,10 @@ GPIO.setwarnings(False)  # don't show warnings
 
 
 class Input:
-    def __init__(self, gpio, label=None, delay=False):
+    def __init__(self, gpio, label=None, dev_class=None, delay=False):
         self.gpio = gpio
         self.label = label
+        self.dev_class = dev_class
         self.delay = delay
 
     def __str__(self):
@@ -63,7 +64,11 @@ class Sensor:
 
 
 inputs = {
-    "tamper": Input(5, "Tamper"),
+    "tamper": Input(
+        gpio=5,
+        label="Tamper",
+        dev_class="tamper"
+        ),
     #"zone1": Input(6, "Hallway 1st floor", True),
     #"zone2": Input(13, "Hallway 2st floor"),
     #"zone3": Input(19),
@@ -71,17 +76,56 @@ inputs = {
 }
 
 outputs = {
-    "led_red": Output(14, "Red LED"),
-    "led_green": Output(15, "Green LED"),
-    "buzzer": Output(2, "Buzzer"),
-    "siren1": Output(3, "Siren indoor", True),
-    "siren2": Output(4, "Siren outdoor", True)
+    "led_red": Output(
+        gpio=14,
+        label="Red LED"
+        ),
+    "led_green": Output(
+        gpio=15,
+        label="Green LED"
+        ),
+    "buzzer": Output(
+        gpio=2,
+        label="Buzzer"
+        ),
+    "siren1": Output(
+        gpio=3,
+        label="Siren indoor",
+        debug=True
+        ),
+    "siren2": Output(
+        gpio=4,
+        label="Siren outdoor",
+        debug=True
+        )
 }
 
 sensors = {
-    "door1": Sensor("zigbee2mqtt/Door front", "contact", False, "Front door", True),
-    "motion1": Sensor("zigbee2mqtt/Motion kitchen", "occupancy", True, "Kitchen"),
-    "motion2": Sensor("zigbee2mqtt/Motion 2nd floor", "occupancy", True, "2nd floor")
+    "door1": Sensor(
+        topic="zigbee2mqtt/Door front",
+        field="contact",
+        value=False,
+        label="Front door",
+        delay=True
+        ),
+    "motion1": Sensor(
+        topic="zigbee2mqtt/Motion kitchen",
+        field="occupancy",
+        value=True,
+        label="Kitchen"
+        ),
+    "motion2": Sensor(
+        topic="zigbee2mqtt/Motion 2nd floor",
+        field="occupancy",
+        value=True,
+        label="2nd floor"
+        ),
+    "panel_tamper": Sensor(
+        topic="zigbee2mqtt/Alarm panel",
+        field="tamper",
+        value=True,
+        label="Panel tamper"
+        )
 }
 
 zones = inputs | sensors
@@ -299,7 +343,7 @@ def hass_discovery():
         payload = payload_common | {
             "name": "RPi security alarm " + input.label.lower(),
             "unique_id": "rpi_alarm_" + key,
-            #"device_class": "motion",
+            "device_class": input.dev_class,
             "value_template": "{{ value_json.zones." + key + " }}",
             "payload_off": False,
             "payload_on": True,
@@ -365,6 +409,7 @@ def on_message(client, userdata, msg):
         if action == "arm_day_zones" and code in codes:
             state.system = "armed_home"
 
+        state.zone("panel_tamper", y["tamper"] is True)
         if y["tamper"] is True:
             check("Panel tamper", False)
 
