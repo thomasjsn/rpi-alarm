@@ -90,6 +90,10 @@ codes = {
     "1234": "Test"
 }
 
+entities = {
+    "triggered_zone": ["Triggered zone", "triggered.zone"]
+}
+
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
 
@@ -127,6 +131,7 @@ class State:
         return json.dumps(self.data)
 
     def publish(self):
+        client.publish("home/alarm_test/availability", "online")
         client.publish('home/alarm_test', self.json())
         #logging.debug("Published state object")
 
@@ -265,6 +270,45 @@ def check(zone, delayed=False):
             x.start()
 
 
+def hass_discovery():
+    payload_common = {
+        "state_topic": "home/alarm_test",
+        "enabled_by_default": True,
+        "availability": {
+            "topic": "home/alarm_test/availability"
+        },
+        "device": {
+            "name": "RPi security alarm",
+            "identifiers": 202146225,
+            "model": "Raspberry Pi ZeroW security alarm",
+            "manufacturer": "The Cavelab"
+        }
+    }
+
+    for key, entity in entities.items():
+        payload = payload_common | {
+            "name": "RPi security alarm " + entity[0].lower(),
+            "unique_id": "rpi_alarm_" + key,
+            "value_template": "{{ value_json." + entity[1] + " }}"
+        }
+
+        print(json.dumps(payload, indent=4, sort_keys=True))
+        client.publish(f'homeassistant/sensor/rpi_alarm/{key}/config', json.dumps(payload))
+
+    for key, input in inputs.items():
+        payload = payload_common | {
+            "name": "RPi security alarm " + input.label.lower(),
+            "unique_id": "rpi_alarm_" + key,
+            #"device_class": "motion",
+            "value_template": "{{ value_json.zones." + key + " }}",
+            "payload_off": False,
+            "payload_on": True,
+        }
+
+        print(json.dumps(payload, indent=4, sort_keys=True))
+        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
+
+
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
     logging.info("Connected with result code " + str(rc))
@@ -279,6 +323,7 @@ def on_connect(client, userdata, flags, rc):
 
     if rc == 0:
         client.connected_flag = True
+        hass_discovery()
         client.publish("home/alarm_test/availability", "online")
     else:
         client.bad_connection_flag = True
@@ -345,15 +390,6 @@ client.on_message = on_message
 client.will_set("home/alarm_test/availability", "offline")
 client.connect("mqtt.lan.uctrl.net")
 client.loop_start()
-
-#discover_1 = {
-#    "name": "test",
-#    "device_class": "motion",
-#    "state_topic": "home/alarm_test",
-#    "value_template": "{{ value_json.zones.zone1 }}"
-#}
-
-#client.publish('homeassistant/binary_sensor/alarm_zone_1/config', json.dumps(discover_1))
 
 
 state = State()
