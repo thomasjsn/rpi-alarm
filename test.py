@@ -58,6 +58,17 @@ class Sensor:
         self.value = value
         self.label = label
         self.delay = delay
+        #self.timestamp = time.time()
+
+    def __str__(self):
+        return self.label
+
+
+class Entity:
+    def __init__(self, field, component, label = None):
+        self.field = field
+        self.component = component
+        self.label = label
 
     def __str__(self):
         return self.label
@@ -135,7 +146,11 @@ codes = {
 }
 
 entities = {
-    "triggered_zone": ["Triggered zone", "triggered.zone"]
+    "triggered_zone": Entity(
+        field="triggered.zone",
+        component="sensor",
+        label="Triggered zone"
+        )
 }
 
 format = "%(asctime)s - %(levelname)s: %(message)s"
@@ -150,7 +165,6 @@ for key, output in outputs.items():
 
 
 class State:
-
     def __init__(self):
         self.data = {
             "state": "disarmed",
@@ -170,6 +184,7 @@ class State:
             }
         }
         self._lock = threading.Lock()
+        self.connected = False;
 
     def json(self):
         return json.dumps(self.data)
@@ -177,7 +192,6 @@ class State:
     def publish(self):
         client.publish("home/alarm_test/availability", "online")
         client.publish('home/alarm_test', self.json())
-        #logging.debug("Published state object")
 
     @property
     def system(self):
@@ -209,9 +223,9 @@ def buzzer(i, x, current_state):
     logging.info(f"Buzzer loop started ({i}, {x})")
 
     for _ in range(i):
-        outputs["led_red"].set(True)
+        outputs["buzzer"].set(True)
         time.sleep(x[0])
-        outputs["led_red"].set(False)
+        outputs["buzzer"].set(False)
         time.sleep(x[1])
 
         if state.system != current_state:
@@ -226,7 +240,7 @@ def siren(i, kind, current_state):
     logging.info(f"Siren loop started ({i}, {kind})")
 
     for x in range(i):
-        outputs["led_red"].set(True)
+        outputs["buzzer"].set(True)
         outputs["siren1"].set(True)
 
         if x > (i/3) and kind in ["burglary"]:
@@ -237,18 +251,18 @@ def siren(i, kind, current_state):
 
         if kind == "tamper":
             time.sleep(0.5)
-            outputs["led_red"].set(False)
+            outputs["buzzer"].set(False)
             outputs["siren1"].set(False)
             time.sleep(0.5)
 
         if state.system != current_state:
-            outputs["led_red"].set(False)
+            outputs["buzzer"].set(False)
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
             logging.info("Siren loop aborted")
             return False
 
-    outputs["led_red"].set(False)
+    outputs["buzzer"].set(False)
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
 
@@ -258,7 +272,7 @@ def siren(i, kind, current_state):
 
 def arming():
     state.system = "arming"
-    if buzzer(10, [0.1, 0.9], "arming") is True:
+    if buzzer(30, [0.1, 0.9], "arming") is True:
         if state.data["clear"]:
             state.system = "armed_away"
         else:
@@ -270,7 +284,7 @@ def pending(current_state, zone):
     state.system = "pending"
     logging.info(f"Pending because of zone: {zone}")
 
-    if buzzer(10, [0.5, 0.5], "pending") is True:
+    if buzzer(30, [0.5, 0.5], "pending") is True:
         triggered(current_state, zone)
 
 
@@ -280,19 +294,23 @@ def triggered(current_state, zone):
         logging.info(f"Triggered because of zone: {zone}")
 
         zone_str = "tamper" if str(zone) == "Tamper" else "burglary"
-        if siren(30, zone_str, "triggered") is True:
+        if siren(60, zone_str, "triggered") is True:
             state.system = current_state
 
 
 def run_led():
     while True:
-        if state.system == "disarmed":
-            time.sleep(3)
+        ok_checks = [state.connected, not state.data["zones"]["tamper"]]
+        run_led = "led_green" if all(ok_checks) else "led_red"
+
+        if state.system == "disarmed" and state.connected:
+            time.sleep(2.5)
         else:
             time.sleep(0.5)
-        outputs["led_green"].set(True)
-        time.sleep(0.1)
-        outputs["led_green"].set(False)
+
+        outputs[run_led].set(True)
+        time.sleep(0.5)
+        outputs[run_led].set(False)
 
 
 def check(zone, delayed=False):
@@ -331,13 +349,13 @@ def hass_discovery():
 
     for key, entity in entities.items():
         payload = payload_common | {
-            "name": "RPi security alarm " + entity[0].lower(),
+            "name": "RPi security alarm " + entity.label.lower(),
             "unique_id": "rpi_alarm_" + key,
-            "value_template": "{{ value_json." + entity[1] + " }}"
+            "value_template": "{{ value_json." + entity.field + " }}"
         }
 
         print(json.dumps(payload, indent=4, sort_keys=True))
-        client.publish(f'homeassistant/sensor/rpi_alarm/{key}/config', json.dumps(payload))
+        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
 
     for key, input in inputs.items():
         payload = payload_common | {
@@ -360,22 +378,39 @@ def on_connect(client, userdata, flags, rc):
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
-    client.subscribe("zigbee2mqtt/Alarm panel")
-    client.subscribe("zigbee2mqtt/Door front")
-    client.subscribe("zigbee2mqtt/Motion 2nd floor")
-    client.subscribe("zigbee2mqtt/Motion kitchen")
+
+    for key, sensor in sensors.items():
+        client.subscribe(sensor.topic)
+        client.subscribe(f"{sensor.topic}/availability")
+
+    #client.subscribe("zigbee2mqtt/Alarm panel")
+    #client.subscribe("zigbee2mqtt/Door front")
+    #client.subscribe("zigbee2mqtt/Motion 2nd floor")
+    #client.subscribe("zigbee2mqtt/Motion kitchen")
 
     if rc == 0:
         client.connected_flag = True
         hass_discovery()
         client.publish("home/alarm_test/availability", "online")
+        state.connected = True
     else:
         client.bad_connection_flag = True
+        print("Bad connection, returned code: ", str(rc))
+
+
+def on_disconnect(client, userdata, rc):
+    logging.info("Disconnecting reason " + str(rc))
+    client.connected_flag = False
+    client.disconnect_flag = True
+    state.connected = False
 
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
     logging.debug("Received message: " + msg.topic + " " + str(msg.payload.decode('utf-8')))
+
+    if msg.topic.endswith("availability"):
+        return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
 
@@ -409,28 +444,50 @@ def on_message(client, userdata, msg):
         if action == "arm_day_zones" and code in codes:
             state.system = "armed_home"
 
-        state.zone("panel_tamper", y["tamper"] is True)
-        if y["tamper"] is True:
-            check("Panel tamper", False)
+#        state.zone("panel_tamper", y["tamper"] is True)
+#        if y["tamper"] is True:
+#            check("Panel tamper", False)
+#
+#        print("panel: "+ str(round(time.time() - test["panel"])))
+#        test["panel"] = time.time()
 
-    if msg.topic == "zigbee2mqtt/Door front":
-        state.zone("door1", y["contact"] is False)
-        if y["contact"] is False:
-            check(sensors["door1"], True)
+    for key, sensor in sensors.items():
+        if msg.topic == sensor.topic:
+            state.zone(key, y[sensor.field] is sensor.value)
 
-    if msg.topic == "zigbee2mqtt/Motion kitchen":
-        state.zone("motion1", y["occupancy"] is True)
-        if y["occupancy"] is True:
-            check(sensors["motion1"], False)
+            if y[sensor.field] is sensor.value:
+                check(sensor, sensor.delay)
 
-    if msg.topic == "zigbee2mqtt/Motion 2nd floor":
-        state.zone("motion2", y["occupancy"] is True)
-        if y["occupancy"] is True:
-            check(sensors["motion2"], False)
+#            last_msg_s = round(time.time() - sensor.timestamp)
+#            if last_msg_s > 0:
+#                logging.debug(f"Seconds since last msg from {key}: {last_msg_s}")
+#            sensor.timestamp = time.time()
+
+#    if msg.topic == "zigbee2mqtt/Door front":
+#        state.zone("door1", y["contact"] is False)
+#        if y["contact"] is False:
+#            check(sensors["door1"], True)
+#
+#        print("door: "+ str(round(time.time() - test["door"])))
+#        test["door"] = time.time()
+#
+#    if msg.topic == "zigbee2mqtt/Motion kitchen":
+#        state.zone("motion1", y["occupancy"] is True)
+#        if y["occupancy"] is True:
+#            check(sensors["motion1"], False)
+#
+#        print("motion :" + str(round(time.time() - test["motion"])))
+#        test["motion"] = time.time()
+#
+#    if msg.topic == "zigbee2mqtt/Motion 2nd floor":
+#        state.zone("motion2", y["occupancy"] is True)
+#        if y["occupancy"] is True:
+#            check(sensors["motion2"], False)
 
 
 client = mqtt.Client('alarm-test')
 client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 client.on_message = on_message
 client.will_set("home/alarm_test/availability", "offline")
 client.connect("mqtt.lan.uctrl.net")
