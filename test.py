@@ -41,7 +41,7 @@ class Output:
         if self.get() != state:
             GPIO.output(self.gpio, state)
             if self.debug:
-                logging.debug(f"Output: {self} set to {state}")
+                logging.debug("Output: %s set to %s", self, state)
 
     def get(self):
         return GPIO.input(self.gpio) == 1
@@ -58,14 +58,14 @@ class Sensor:
         self.value = value
         self.label = label
         self.delay = delay
-        #self.timestamp = time.time()
+        self.timestamp = time.time()
 
     def __str__(self):
         return self.label
 
 
 class Entity:
-    def __init__(self, field, component, label = None):
+    def __init__(self, field, component, label=None):
         self.field = field
         self.component = component
         self.label = label
@@ -184,7 +184,7 @@ class State:
             }
         }
         self._lock = threading.Lock()
-        self.connected = False;
+        self.connected = False
 
     def json(self):
         return json.dumps(self.data)
@@ -200,7 +200,7 @@ class State:
     @system.setter
     def system(self, state):
         with self._lock:
-            logging.warning(f"System state changed to: {state}")
+            logging.warning("System state changed to: %s", state)
             self.data["state"] = state
             self.publish()
 
@@ -211,16 +211,21 @@ class State:
         self.system = "triggered"
 
     def zone(self, zone, value):
+        clear = not any(self.data["zones"].values())
+
+        if self.data["clear"] is not clear:
+            self.data["clear"] = clear
+            logging.info("All zones are clear: %s", self.data['clear'])
+
         if self.data["zones"][zone] != value:
             self.data["zones"][zone] = value
-            self.data["clear"] = not any(self.data["zones"].values())
-            logging.info(f"Zone: {zones[zone]} changed to {value}, clear is {self.data['clear']}")
+            logging.info("Zone: %s changed to %s", zones[zone], value)
             self.publish()
             #print(json.dumps(self.data, indent=4, sort_keys=True))
 
 
 def buzzer(i, x, current_state):
-    logging.info(f"Buzzer loop started ({i}, {x})")
+    logging.info("Buzzer loop started (%d, %d)", i, x)
 
     for _ in range(i):
         outputs["buzzer"].set(True)
@@ -237,7 +242,7 @@ def buzzer(i, x, current_state):
 
 
 def siren(i, kind, current_state):
-    logging.info(f"Siren loop started ({i}, {kind})")
+    logging.info("Siren loop started (%d, %s)", i, kind)
 
     for x in range(i):
         outputs["buzzer"].set(True)
@@ -281,17 +286,18 @@ def arming():
 
 
 def pending(current_state, zone):
-    state.system = "pending"
-    logging.info(f"Pending because of zone: {zone}")
+    with pending_lock:
+        state.system = "pending"
+        logging.info("Pending because of zone: %s", zone)
 
-    if buzzer(30, [0.5, 0.5], "pending") is True:
-        triggered(current_state, zone)
+        if buzzer(30, [0.5, 0.5], "pending") is True:
+            triggered(current_state, zone)
 
 
 def triggered(current_state, zone):
     with triggered_lock:
         state.triggered(zone)
-        logging.info(f"Triggered because of zone: {zone}")
+        logging.info("Triggered because of zone: %s", zone)
 
         zone_str = "tamper" if str(zone) == "Tamper" else "burglary"
         if siren(60, zone_str, "triggered") is True:
@@ -314,12 +320,8 @@ def run_led():
 
 
 def check(zone, delayed=False):
-    #if state.system != "triggered" and str(zone) == "Tamper":
-    #    x = threading.Thread(target=triggered, args=(state.system,zone,))
-    #    x.start()
-
-    if state.system == "armed_away":
-        if delayed:
+    if state.system in ["armed_away", "pending"]:
+        if delayed and not pending_lock.locked():
             x = threading.Thread(target=pending, args=("armed_away", zone,))
             x.start()
         elif not triggered_lock.locked():
@@ -327,7 +329,7 @@ def check(zone, delayed=False):
             x.start()
 
     if state.system == "armed_home":
-        if zone in [zones["door1"], zones["tamper"]]:
+        if zone in [zones["door1"], zones["tamper"]] and not triggered_lock.locked():
             x = threading.Thread(target=triggered, args=("armed_home", zone,))
             x.start()
 
@@ -354,7 +356,7 @@ def hass_discovery():
             "value_template": "{{ value_json." + entity.field + " }}"
         }
 
-        print(json.dumps(payload, indent=4, sort_keys=True))
+        #print(json.dumps(payload, indent=4, sort_keys=True))
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
 
     for key, input in inputs.items():
@@ -367,13 +369,13 @@ def hass_discovery():
             "payload_on": True,
         }
 
-        print(json.dumps(payload, indent=4, sort_keys=True))
+        #print(json.dumps(payload, indent=4, sort_keys=True))
         client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
 
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
-    logging.info("Connected with result code " + str(rc))
+    logging.info("Connected with result code %s", rc)
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
@@ -381,7 +383,7 @@ def on_connect(client, userdata, flags, rc):
 
     for key, sensor in sensors.items():
         client.subscribe(sensor.topic)
-        client.subscribe(f"{sensor.topic}/availability")
+        #client.subscribe(f"{sensor.topic}/availability")
 
     #client.subscribe("zigbee2mqtt/Alarm panel")
     #client.subscribe("zigbee2mqtt/Door front")
@@ -399,7 +401,7 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_disconnect(client, userdata, rc):
-    logging.info("Disconnecting reason " + str(rc))
+    logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
     client.disconnect_flag = True
     state.connected = False
@@ -407,17 +409,17 @@ def on_disconnect(client, userdata, rc):
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
-    logging.debug("Received message: " + msg.topic + " " + str(msg.payload.decode('utf-8')))
+    logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
-    if msg.topic.endswith("availability"):
-        return
+#    if msg.topic.endswith("availability"):
+#        return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
 
     if msg.topic == "home/alarm_test/set":
         action = y["action"]
         code = y.get("code")
-        logging.info("Action requested: " + action)
+        logging.info("Action requested: %s", action)
 
         if action == "DISARM" and code in codes:
             state.system = "disarmed"
@@ -432,7 +434,7 @@ def on_message(client, userdata, msg):
     if msg.topic == "zigbee2mqtt/Alarm panel":
         action = y["action"]
         code = y.get("action_code")
-        logging.info("Action requested: " + str(action or "none"))
+        logging.info("Action requested: %s", action or "none")
 
         if action == "disarm" and code in codes:
             state.system = "disarmed"
@@ -447,9 +449,6 @@ def on_message(client, userdata, msg):
 #        state.zone("panel_tamper", y["tamper"] is True)
 #        if y["tamper"] is True:
 #            check("Panel tamper", False)
-#
-#        print("panel: "+ str(round(time.time() - test["panel"])))
-#        test["panel"] = time.time()
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
@@ -458,26 +457,20 @@ def on_message(client, userdata, msg):
             if y[sensor.field] is sensor.value:
                 check(sensor, sensor.delay)
 
-#            last_msg_s = round(time.time() - sensor.timestamp)
-#            if last_msg_s > 0:
-#                logging.debug(f"Seconds since last msg from {key}: {last_msg_s}")
-#            sensor.timestamp = time.time()
+            last_msg_s = round(time.time() - sensor.timestamp)
+            if last_msg_s > 0:
+                logging.debug("Seconds since last msg from %s: %d", key, last_msg_s)
+            sensor.timestamp = time.time()
 
 #    if msg.topic == "zigbee2mqtt/Door front":
 #        state.zone("door1", y["contact"] is False)
 #        if y["contact"] is False:
 #            check(sensors["door1"], True)
 #
-#        print("door: "+ str(round(time.time() - test["door"])))
-#        test["door"] = time.time()
-#
 #    if msg.topic == "zigbee2mqtt/Motion kitchen":
 #        state.zone("motion1", y["occupancy"] is True)
 #        if y["occupancy"] is True:
 #            check(sensors["motion1"], False)
-#
-#        print("motion :" + str(round(time.time() - test["motion"])))
-#        test["motion"] = time.time()
 #
 #    if msg.topic == "zigbee2mqtt/Motion 2nd floor":
 #        state.zone("motion2", y["occupancy"] is True)
@@ -501,6 +494,7 @@ for z in zones:
 
 state.publish()
 
+pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
 
 if __name__ == "__main__":
@@ -510,8 +504,8 @@ if __name__ == "__main__":
     while True:
         time.sleep(0.01)
 
-        for z in inputs:
-            state.zone(z, inputs[z].get())
+        for key, input in inputs.items():
+            state.zone(key, input.get())
 
-            if inputs[z].is_true:
-                check(inputs[z], inputs[z].delay)
+            if input.is_true:
+                check(input, input.delay)
