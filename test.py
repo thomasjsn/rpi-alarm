@@ -88,16 +88,16 @@ class Entity:
 
 
 inputs = {
-    "tamper": Input(
+    "ext_tamper": Input(
         gpio=2,
-        label="Tamper",
+        label="External tamper",
         dev_class="tamper"
         ),
     #"zone1": Input(3, "Hallway 1st floor", "motion"),
     #"zone2": Input(4, "Hallway 2st floor", "motion"),
     #"zone3": Input(17),
     #"zone4": Input(27)
-}
+    }
 
 outputs = {
     "led_red": Output(
@@ -122,7 +122,7 @@ outputs = {
         label="Siren outdoor",
         debug=True
         )
-}
+    }
 
 sensors = {
     "door1": Sensor(
@@ -166,13 +166,10 @@ sensors = {
         value="emergency",
         label="Emergency button"
         )
-}
+    }
 
 zones = inputs | sensors
 
-#codes = {
-#    "1234": "Test"
-#}
 codes = dict(config["codes"])
 
 entities = {
@@ -180,8 +177,20 @@ entities = {
         field="triggered.zone",
         component="sensor",
         label="Triggered zone"
+        ),
+    "system_fault": Entity(
+        field="fault",
+        component="binary_sensor",
+        dev_class="problem",
+        label="System status"
+        ),
+    "system_tamper": Entity(
+        field="tamper",
+        component="binary_sensor",
+        dev_class="tamper",
+        label="System tamper"
         )
-}
+    }
 
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
@@ -199,17 +208,17 @@ class State:
         self.data = {
             "state": "disarmed",
             "clear": False,
-            "fault": False,
+            "fault": True,
+            "tamper": True,
             "zones": {},
             "triggered": {
                 "zone": None,
                 "timestamp": None
-            }
+            },
+            "status": {}
         }
         self._lock = threading.Lock()
-        self.connected = False
         self.blocked = set()
-        self.status = {}
 
     def json(self):
         return json.dumps(self.data)
@@ -217,6 +226,7 @@ class State:
     def publish(self):
         client.publish("home/alarm_test/availability", "online", retain=True)
         client.publish('home/alarm_test', self.json(), retain=True)
+        #print(json.dumps(state.data, indent=4, sort_keys=True))
 
     @property
     def system(self):
@@ -248,23 +258,24 @@ class State:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
             self.publish()
-            #print(json.dumps(self.data, indent=4, sort_keys=True))
 
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
-            state.status["tamper"] = not any(tamper_zones.values())
+            state.data["status"]["tamper"] = not any(tamper_zones.values())
+            state.data["tamper"] = any(tamper_zones.values())
 
         if zone in self.blocked and value is False:
             self.blocked.remove(zone)
             logging.debug("Blocked zones: %s", self.blocked)
 
     def fault(self):
-        fault = not all(self.status.values())
+        fault = not all(self.data["status"].values())
 
         if self.data["fault"] is not fault:
             self.data["fault"] = fault
+            self.publish()
 
             if fault:
-                faulted_status = ",".join([k for k, v in self.status.items() if not v])
+                faulted_status = ",".join([k for k, v in self.data["status"].items() if not v])
                 logging.error("System fault: %s", faulted_status)
                 pushover.push(f"System fault: {faulted_status}")
 
@@ -325,7 +336,7 @@ def siren(i, zone, current_state):
         if x > (i/3) and i >= 30:
             outputs["siren2"].set(True)
 
-        if zone == zones["tamper"]:
+        if zone.label.endswith("tamper"):
             time.sleep(0.5)
             #outputs["buzzer"].set(False)
             outputs["siren1"].set(False)
@@ -355,7 +366,9 @@ def siren(i, zone, current_state):
 
 def arming(user):
     state.system = "arming"
-    if buzzer(30, [0.1, 0.9], "arming") is True:
+    arming_time = int(config["times"]["arming"])
+
+    if buzzer(arming_time, [0.1, 0.9], "arming") is True:
         if state.data["clear"]:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
@@ -363,18 +376,23 @@ def arming(user):
             logging.error("Unable to arm, zones not clear")
             state.system = "disarmed"
             pushover.push("Arming failed, not clear", 1, {"sound": "siren"})
+            buzzer(1, [1, 0], "disarmed")
 
 
 def pending(current_state, zone):
+    delay_time = int(config["times"]["delay"])
+
     with pending_lock:
         state.system = "pending"
         logging.info("Pending because of zone: %s", zone)
 
-        if buzzer(30, [0.5, 0.5], "pending") is True:
+        if buzzer(delay_time, [0.5, 0.5], "pending") is True:
             triggered(current_state, zone)
 
 
 def triggered(current_state, zone):
+    trigger_time = int(config["times"]["trigger"])
+
     with triggered_lock:
         state.triggered(zone)
         logging.info("Triggered because of zone: %s", zone)
@@ -383,7 +401,7 @@ def triggered(current_state, zone):
         state.blocked.add(zone)
         logging.debug("Blocked zones: %s", state.blocked)
 
-        if siren(30, zone, "triggered") is True:
+        if siren(trigger_time, zone, "triggered") is True:
             state.system = current_state
 
 
@@ -396,7 +414,7 @@ def disarmed(user):
 def armed_home(user):
     state.system = "armed_home"
     pushover.push(f"System armed home, by {user}")
-    buzzer(1, [0.2, 0.2], "armed_home")
+    buzzer(1, [0.1, 0.1], "armed_home")
 
 
 def run_led():
@@ -428,8 +446,9 @@ def check(zone, delayed=False):
             threading.Thread(target=triggered, args=("armed_away", zone,)).start()
 
     if state.system == "armed_home":
-        if zone in [zones["door1"], zones["tamper"]] and not triggered_lock.locked():
-            threading.Thread(target=triggered, args=("armed_home", zone,)).start()
+        if not triggered_lock.locked():
+            if zone in [zones["door1"]] or zone.label.endswith("tamper"):
+                threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
 
 def hass_discovery():
@@ -454,6 +473,12 @@ def hass_discovery():
             "device_class": entity.dev_class,
             "value_template": "{{ value_json." + entity.field + " }}"
         }
+
+        if entity.component == "binary_sensor":
+            payload = payload | {
+                    "payload_off": False,
+                    "payload_on": True
+                    }
 
         #print(json.dumps(payload, indent=4, sort_keys=True))
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
@@ -486,16 +511,11 @@ def on_connect(client, userdata, flags, rc):
     for topic in topics:
         client.subscribe(topic)
 
-    #client.subscribe("zigbee2mqtt/Alarm panel")
-    #client.subscribe("zigbee2mqtt/Door front")
-    #client.subscribe("zigbee2mqtt/Motion 2nd floor")
-    #client.subscribe("zigbee2mqtt/Motion kitchen")
-
     if rc == 0:
         client.connected_flag = True
         hass_discovery()
         client.publish("home/alarm_test/availability", "online")
-        state.status["connected"] = True
+        state.data["status"]["connected"] = True
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
@@ -505,7 +525,7 @@ def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
     client.disconnect_flag = True
-    state.status["connected"] = True
+    state.data["status"]["connected"] = True
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -516,7 +536,7 @@ def on_message(client, userdata, msg):
 #        return
 
     if msg.topic == "zigbee2mqtt/bridge/state":
-        state.status["bridge"] = msg.payload.decode('utf-8') == "online"
+        state.data["status"]["bridge"] = msg.payload.decode('utf-8') == "online"
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
@@ -561,10 +581,6 @@ def on_message(client, userdata, msg):
         elif code is not None:
             logging.error("Bad code: %s", code)
 
-#        state.zone("panel_tamper", y["tamper"] is True)
-#        if y["tamper"] is True:
-#            check("Panel tamper", False)
-
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
             state.zone(key, y[sensor.field] == sensor.value)
@@ -573,21 +589,6 @@ def on_message(client, userdata, msg):
                 check(sensor, sensor.delay)
 
             sensor.timestamp = time.time()
-
-#    if msg.topic == "zigbee2mqtt/Door front":
-#        state.zone("door1", y["contact"] is False)
-#        if y["contact"] is False:
-#            check(sensors["door1"], True)
-#
-#    if msg.topic == "zigbee2mqtt/Motion kitchen":
-#        state.zone("motion1", y["occupancy"] is True)
-#        if y["occupancy"] is True:
-#            check(sensors["motion1"], False)
-#
-#    if msg.topic == "zigbee2mqtt/Motion 2nd floor":
-#        state.zone("motion2", y["occupancy"] is True)
-#        if y["occupancy"] is True:
-#            check(sensors["motion2"], False)
 
 
 def status_check():
@@ -599,11 +600,11 @@ def status_check():
             last_msg_s = round(time.time() - sensor.timestamp)
 
             if last_msg_s > sensor.timeout:
-                state.status["sensors"] = False
+                state.data["status"]["sensors"] = False
                 break
 
         else:
-            state.status["sensors"] = True
+            state.data["status"]["sensors"] = True
 
         state.fault()
         time.sleep(1)
@@ -622,9 +623,7 @@ state = State()
 pushover = Pushover()
 
 for z in zones:
-    state.data["zones"][z] = False
-
-state.publish()
+    state.data["zones"][z] = True
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
