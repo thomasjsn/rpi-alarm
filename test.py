@@ -5,14 +5,26 @@ import logging
 import datetime
 import paho.mqtt.client as mqtt
 import RPi.GPIO as GPIO
-import http.client, urllib
+#import http.client, urllib
 import configparser
+import argparse
+import atexit
+import os
+
+from pushover import Pushover
+import hass
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
 
 config = configparser.ConfigParser()
 config.read('config.ini')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--silent', dest='silent', action='store_true', help="no siren")
+#parser.set_defaults(feature=True)
+args = parser.parse_args()
+
 
 
 class Input:
@@ -47,6 +59,10 @@ class Output:
 
     def set(self, state):
         if self.get() != state:
+            if self in [outputs["siren1"], outputs["siren2"]] and args.silent and state:
+                logging.debug("Supressing %s, because silent", self)
+                return
+
             GPIO.output(self.gpio, state)
             if self.debug:
                 logging.debug("Output: %s set to %s", self, state)
@@ -147,6 +163,13 @@ sensors = {
         label="2nd floor",
         timeout=3600
         ),
+    "water_leak1": Sensor(
+        topic="zigbee2mqtt/Water leak kitchen",
+        field="water_leak",
+        value=True,
+        label="Kitchen water leak",
+        timeout=3600
+        ),
     "panel_tamper": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="tamper",
@@ -195,18 +218,26 @@ entities = {
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
 
-for key, input in inputs.items():
+for input in inputs.values():
     GPIO.setup(input.gpio, GPIO.IN)
 
-for key, output in outputs.items():
+for output in outputs.values():
     GPIO.setup(output.gpio, GPIO.OUT)
     output.set(False)
 
 
+def wrapping_up():
+    for output in outputs.values():
+        output.set(False)
+
+    logging.info("All outputs set to False")
+
+atexit.register(wrapping_up)
+
 class State:
     def __init__(self):
         self.data = {
-            "state": "disarmed",
+            "state": config["system"]["state"],
             "clear": False,
             "fault": True,
             "tamper": True,
@@ -238,6 +269,11 @@ class State:
             logging.warning("System state changed to: %s", state)
             self.data["state"] = state
             self.publish()
+
+            if state in ["disarmed", "armed_home", "armed_away"]:
+                with open('config.ini', 'w') as configfile:
+                    config["system"]["state"] = state
+                    config.write(configfile)
 
     def triggered(self, zone):
         with self._lock:
@@ -280,33 +316,33 @@ class State:
                 pushover.push(f"System fault: {faulted_status}")
 
 
-class Pushover:
-    def __init__(self):
-        self.token = config["pushover"]["token"]
-        self.user = config["pushover"]["user"]
-
-    def _push(self, message, priority=0, data={}):
-        if priority == 2:
-            data = {
-                "sound": "alien",
-                "priority": 2,
-                "retry": 30,
-                "expire": 3600
-            }
-
-        conn = http.client.HTTPSConnection("api.pushover.net:443")
-        conn.request("POST", "/1/messages.json",
-                     urllib.parse.urlencode({
-                         "token": self.token,
-                         "user": self.user,
-                         "message": message,
-                         "timestamp": time.time(),
-                         "sound": "gamelan"
-                     } | data), {"Content-type": "application/x-www-form-urlencoded"})
-        conn.getresponse()
-
-    def push(self, message, priority=0, data={}):
-        threading.Thread(target=self._push, args=(message, priority, data,)).start()
+#class Pushover:
+#    def __init__(self):
+#        self.token = config["pushover"]["token"]
+#        self.user = config["pushover"]["user"]
+#
+#    def _push(self, message, priority=0, data={}):
+#        if priority == 2:
+#            data = {
+#                "sound": "alien",
+#                "priority": 2,
+#                "retry": 30,
+#                "expire": 3600
+#            }
+#
+#        conn = http.client.HTTPSConnection("api.pushover.net:443")
+#        conn.request("POST", "/1/messages.json",
+#                     urllib.parse.urlencode({
+#                         "token": self.token,
+#                         "user": self.user,
+#                         "message": message,
+#                         "timestamp": time.time(),
+#                         "sound": "gamelan"
+#                     } | data), {"Content-type": "application/x-www-form-urlencoded"})
+#        conn.getresponse()
+#
+#    def push(self, message, priority=0, data={}):
+#        threading.Thread(target=self._push, args=(message, priority, data,)).start()
 
 
 def buzzer(i, x, current_state):
@@ -333,20 +369,18 @@ def siren(i, zone, current_state):
         #outputs["buzzer"].set(True)
         outputs["siren1"].set(True)
 
-        if x > (i/3) and i >= 30:
-            outputs["siren2"].set(True)
-
-        if zone.label.endswith("tamper"):
-            time.sleep(0.5)
-            #outputs["buzzer"].set(False)
-            outputs["siren1"].set(False)
-            time.sleep(0.5)
-
-        elif zone == zones["emergency"]:
+        if zone == zones["emergency"]:
             time.sleep(0.1)
             break
 
+        elif zone.label.endswith("water leak"):
+            time.sleep(0.1)
+            outputs["siren1"].set(False)
+            time.sleep(0.9)
+
         else:
+            if x > (i/3):
+                outputs["siren2"].set(True)
             time.sleep(1)
 
         if state.system != current_state:
@@ -432,7 +466,7 @@ def run_led():
 
 
 def check(zone, delayed=False):
-    if zone in [zones["panic"], zones["emergency"]]:
+    if zone in [zones["panic"], zones["emergency"], zones["water_leak1"]]:
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
@@ -451,50 +485,50 @@ def check(zone, delayed=False):
                 threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
 
-def hass_discovery():
-    payload_common = {
-        "state_topic": "home/alarm_test",
-        "enabled_by_default": True,
-        "availability": {
-            "topic": "home/alarm_test/availability"
-        },
-        "device": {
-            "name": "RPi security alarm",
-            "identifiers": 202146225,
-            "model": "Raspberry Pi ZeroW security alarm",
-            "manufacturer": "The Cavelab"
-        }
-    }
-
-    for key, entity in entities.items():
-        payload = payload_common | {
-            "name": "RPi security alarm " + entity.label.lower(),
-            "unique_id": "rpi_alarm_" + key,
-            "device_class": entity.dev_class,
-            "value_template": "{{ value_json." + entity.field + " }}"
-        }
-
-        if entity.component == "binary_sensor":
-            payload = payload | {
-                    "payload_off": False,
-                    "payload_on": True
-                    }
-
-        #print(json.dumps(payload, indent=4, sort_keys=True))
-        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
-
-    for key, input in inputs.items():
-        payload = payload_common | {
-            "name": "RPi security alarm " + input.label.lower(),
-            "unique_id": "rpi_alarm_" + key,
-            "device_class": input.dev_class,
-            "value_template": "{{ value_json.zones." + key + " }}",
-            "payload_off": False,
-            "payload_on": True,
-        }
-
-        #print(json.dumps(payload, indent=4, sort_keys=True))
-        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
+#def hass_discovery():
+#    payload_common = {
+#        "state_topic": "home/alarm_test",
+#        "enabled_by_default": True,
+#        "availability": {
+#            "topic": "home/alarm_test/availability"
+#        },
+#        "device": {
+#            "name": "RPi security alarm",
+#            "identifiers": 202146225,
+#            "model": "Raspberry Pi ZeroW security alarm",
+#            "manufacturer": "The Cavelab"
+#        }
+#    }
+#
+#    for key, entity in entities.items():
+#        payload = payload_common | {
+#            "name": "RPi security alarm " + entity.label.lower(),
+#            "unique_id": "rpi_alarm_" + key,
+#            "device_class": entity.dev_class,
+#            "value_template": "{{ value_json." + entity.field + " }}"
+#        }
+#
+#        if entity.component == "binary_sensor":
+#            payload = payload | {
+#                    "payload_off": False,
+#                    "payload_on": True
+#                    }
+#
+#        #print(json.dumps(payload, indent=4, sort_keys=True))
+#        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
+#
+#    for key, input in inputs.items():
+#        payload = payload_common | {
+#            "name": "RPi security alarm " + input.label.lower(),
+#            "unique_id": "rpi_alarm_" + key,
+#            "device_class": input.dev_class,
+#            "value_template": "{{ value_json.zones." + key + " }}",
+#            "payload_off": False,
+#            "payload_on": True,
+#        }
+#
+#        #print(json.dumps(payload, indent=4, sort_keys=True))
+#        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
 
 
 # The callback for when the client receives a CONNACK response from the server.
@@ -513,8 +547,8 @@ def on_connect(client, userdata, flags, rc):
 
     if rc == 0:
         client.connected_flag = True
-        hass_discovery()
-        client.publish("home/alarm_test/availability", "online")
+        #hass_discovery()
+        hass.discovery(client, entities, inputs)
         state.data["status"]["connected"] = True
     else:
         client.bad_connection_flag = True
@@ -620,7 +654,10 @@ client.loop_start()
 
 
 state = State()
-pushover = Pushover()
+pushover = Pushover(
+        config["pushover"]["token"],
+        config["pushover"]["user"]
+        )
 
 for z in zones:
     state.data["zones"][z] = True
@@ -643,3 +680,10 @@ if __name__ == "__main__":
 
             if input.is_true:
                 check(input, input.delay)
+
+        if (not triggered_lock.locked() and
+                (outputs["siren1"].is_true or outputs["siren2"].is_true)):
+
+                logging.fatal("Siren(s) on outside lock!")
+                wrapping_up()
+                os._exit(os.EX_SOFTWARE)
