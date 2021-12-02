@@ -21,7 +21,8 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--silent', dest='silent', action='store_true', help="no siren")
+parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
+parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
 
@@ -238,9 +239,9 @@ class State:
     def __init__(self):
         self.data = {
             "state": config["system"]["state"],
-            "clear": False,
-            "fault": True,
-            "tamper": True,
+            "clear": True,
+            "fault": False,
+            "tamper": False,
             "zones": {},
             "triggered": {
                 "zone": None,
@@ -257,7 +258,9 @@ class State:
     def publish(self):
         client.publish("home/alarm_test/availability", "online", retain=True)
         client.publish('home/alarm_test', self.json(), retain=True)
-        #print(json.dumps(state.data, indent=4, sort_keys=True))
+
+        if args.print_payload:
+            print(json.dumps(state.data, indent=4, sort_keys=True))
 
     @property
     def system(self):
@@ -293,11 +296,14 @@ class State:
         if self.data["zones"][zone_key] != value:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
-            self.publish()
 
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
-            state.data["status"]["tamper"] = not any(tamper_zones.values())
             state.data["tamper"] = any(tamper_zones.values())
+
+            for tamper_key, tamper_status in tamper_zones.items():
+                state.data["status"][f"{tamper_key}_ok"] = not tamper_status
+
+            self.publish()
 
         if zone in self.blocked and value is False:
             self.blocked.remove(zone)
@@ -314,6 +320,9 @@ class State:
                 faulted_status = ",".join([k for k, v in self.data["status"].items() if not v])
                 logging.error("System fault: %s", faulted_status)
                 pushover.push(f"System fault: {faulted_status}")
+            else:
+                logging.info("System status restored")
+                pushover.push("System status restored")
 
 
 #class Pushover:
@@ -366,7 +375,6 @@ def siren(i, zone, current_state):
     logging.info("Siren loop started (%d, %s)", i, zone)
 
     for x in range(i):
-        #outputs["buzzer"].set(True)
         outputs["siren1"].set(True)
 
         if zone == zones["emergency"]:
@@ -384,13 +392,11 @@ def siren(i, zone, current_state):
             time.sleep(1)
 
         if state.system != current_state:
-            #outputs["buzzer"].set(False)
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
             logging.info("Siren loop aborted")
             return False
 
-    #outputs["buzzer"].set(False)
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
 
@@ -549,7 +555,7 @@ def on_connect(client, userdata, flags, rc):
         client.connected_flag = True
         #hass_discovery()
         hass.discovery(client, entities, inputs)
-        state.data["status"]["connected"] = True
+        state.data["status"]["mqtt_connected"] = True
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
@@ -559,7 +565,7 @@ def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
     client.disconnect_flag = True
-    state.data["status"]["connected"] = True
+    state.data["status"]["mqtt_connected"] = True
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -570,7 +576,7 @@ def on_message(client, userdata, msg):
 #        return
 
     if msg.topic == "zigbee2mqtt/bridge/state":
-        state.data["status"]["bridge"] = msg.payload.decode('utf-8') == "online"
+        state.data["status"]["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
@@ -632,13 +638,7 @@ def status_check():
                 continue
 
             last_msg_s = round(time.time() - sensor.timestamp)
-
-            if last_msg_s > sensor.timeout:
-                state.data["status"]["sensors"] = False
-                break
-
-        else:
-            state.data["status"]["sensors"] = True
+            state.data["status"][f"sensor_{key}"] = last_msg_s < sensor.timeout
 
         state.fault()
         time.sleep(1)
