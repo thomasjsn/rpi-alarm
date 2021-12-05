@@ -5,7 +5,6 @@ import logging
 import datetime
 import paho.mqtt.client as mqtt
 import RPi.GPIO as GPIO
-#import http.client, urllib
 import configparser
 import argparse
 import atexit
@@ -325,35 +324,6 @@ class State:
                 pushover.push("System status restored")
 
 
-#class Pushover:
-#    def __init__(self):
-#        self.token = config["pushover"]["token"]
-#        self.user = config["pushover"]["user"]
-#
-#    def _push(self, message, priority=0, data={}):
-#        if priority == 2:
-#            data = {
-#                "sound": "alien",
-#                "priority": 2,
-#                "retry": 30,
-#                "expire": 3600
-#            }
-#
-#        conn = http.client.HTTPSConnection("api.pushover.net:443")
-#        conn.request("POST", "/1/messages.json",
-#                     urllib.parse.urlencode({
-#                         "token": self.token,
-#                         "user": self.user,
-#                         "message": message,
-#                         "timestamp": time.time(),
-#                         "sound": "gamelan"
-#                     } | data), {"Content-type": "application/x-www-form-urlencoded"})
-#        conn.getresponse()
-#
-#    def push(self, message, priority=0, data={}):
-#        threading.Thread(target=self._push, args=(message, priority, data,)).start()
-
-
 def buzzer(i, x, current_state):
     logging.info("Buzzer loop started (%d, %s)", i, x)
 
@@ -491,52 +461,6 @@ def check(zone, delayed=False):
                 threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
 
-#def hass_discovery():
-#    payload_common = {
-#        "state_topic": "home/alarm_test",
-#        "enabled_by_default": True,
-#        "availability": {
-#            "topic": "home/alarm_test/availability"
-#        },
-#        "device": {
-#            "name": "RPi security alarm",
-#            "identifiers": 202146225,
-#            "model": "Raspberry Pi ZeroW security alarm",
-#            "manufacturer": "The Cavelab"
-#        }
-#    }
-#
-#    for key, entity in entities.items():
-#        payload = payload_common | {
-#            "name": "RPi security alarm " + entity.label.lower(),
-#            "unique_id": "rpi_alarm_" + key,
-#            "device_class": entity.dev_class,
-#            "value_template": "{{ value_json." + entity.field + " }}"
-#        }
-#
-#        if entity.component == "binary_sensor":
-#            payload = payload | {
-#                    "payload_off": False,
-#                    "payload_on": True
-#                    }
-#
-#        #print(json.dumps(payload, indent=4, sort_keys=True))
-#        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
-#
-#    for key, input in inputs.items():
-#        payload = payload_common | {
-#            "name": "RPi security alarm " + input.label.lower(),
-#            "unique_id": "rpi_alarm_" + key,
-#            "device_class": input.dev_class,
-#            "value_template": "{{ value_json.zones." + key + " }}",
-#            "payload_off": False,
-#            "payload_on": True,
-#        }
-#
-#        #print(json.dumps(payload, indent=4, sort_keys=True))
-#        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
-
-
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
     logging.info("Connected with result code %s", rc)
@@ -571,9 +495,6 @@ def on_disconnect(client, userdata, rc):
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
-
-#    if msg.topic.endswith("availability"):
-#        return
 
     if msg.topic == "zigbee2mqtt/bridge/state":
         state.data["status"]["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
