@@ -203,6 +203,22 @@ sensors = {
         )
     }
 
+sensors["door2"].battery = Sensor(
+        topic="zwave/nodeID_10/128/0/isLow",
+        field="value",
+        value=True
+        )
+sensors["panel_tamper"].battery = Sensor(
+        topic="zigbee2mqtt/Alarm panel",
+        field="battery_low",
+        value=True
+        )
+sensors["water_leak1"].battery = Sensor(
+        topic="zigbee2mqtt/Water leak kitchen",
+        field="battery_low",
+        value=True
+        )
+
 zones = inputs | sensors
 
 codes = dict(config["codes"])
@@ -485,7 +501,16 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("home/alarm_test/set")
     client.subscribe("zigbee2mqtt/bridge/state")
 
-    topics = set([sensor.topic for sensor in sensors.values()])
+    #topics = set([sensor.topic for sensor in sensors.values()])
+    topics = set()
+
+    for sensor in sensors.values():
+        topics.add(sensor.topic)
+
+        if hasattr(sensor, "battery"):
+            topics.add(sensor.battery.topic)
+
+    logging.debug("Topics: %s", topics)
 
     for topic in topics:
         client.subscribe(topic)
@@ -566,6 +591,11 @@ def on_message(client, userdata, msg):
 
             sensor.timestamp = time.time()
 
+        if hasattr(sensor, 'battery'):
+            if msg.topic == sensor.battery.topic:
+                state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
+
+
 
 def status_check():
     while True:
@@ -574,7 +604,7 @@ def status_check():
                 continue
 
             last_msg_s = round(time.time() - sensor.timestamp)
-            state.data["status"][f"sensor_{key}"] = last_msg_s < sensor.timeout
+            state.data["status"][f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
 
         state.fault()
         time.sleep(1)
