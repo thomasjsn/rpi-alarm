@@ -22,6 +22,8 @@ config.read('config.ini')
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
+parser.add_argument('--siren-test', dest='siren_test', action='store_true', help="sirens test (loud)")
+parser.add_argument('--walk-test', dest='walk_test', action='store_true', help="signal when zones trigger")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
 
@@ -112,7 +114,10 @@ inputs = {
     #"zone1": Input(3, "Hallway 1st floor", "motion"),
     #"zone2": Input(4, "Hallway 2st floor", "motion"),
     #"zone3": Input(17),
-    #"zone4": Input(27)
+    #"zone4": Input(27),
+    #"zone5": Input(),
+    #"zone6": Input(),
+    #"unit_tamper": Input()
     }
 
 outputs = {
@@ -147,6 +152,13 @@ sensors = {
         value=False,
         label="Front door",
         delay=True,
+        timeout=3600
+        ),
+    "door2": Sensor(
+        topic="zwave/nodeID_10/113/0/Access_Control/Door_state",
+        field="value",
+        value=22,
+        label="Back door",
         timeout=3600
         ),
     "motion1": Sensor(
@@ -296,6 +308,9 @@ class State:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
 
+            if value and args.walk_test:
+                buzzer(2, [0.2, 0.2], "disarmed")
+
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
             state.data["tamper"] = any(tamper_zones.values())
 
@@ -357,7 +372,7 @@ def siren(i, zone, current_state):
             time.sleep(0.9)
 
         else:
-            if x > (i/3):
+            if i > 5 and x >= (i/3):
                 outputs["siren2"].set(True)
             time.sleep(1)
 
@@ -592,6 +607,15 @@ if __name__ == "__main__":
 
     status_check = threading.Thread(target=status_check, args=())
     status_check.start()
+
+    if args.siren_test and state.system == "disarmed":
+        with pending_lock:
+            buzzer(10, [0.25, 0.75], "disarmed")
+        with triggered_lock:
+            siren(6, zones["ext_tamper"], "disarmed")
+
+        wrapping_up()
+        os._exit(os.EX_OK)
 
     while True:
         time.sleep(0.01)
