@@ -147,19 +147,23 @@ outputs = {
 
 sensors = {
     "door1": Sensor(
-        topic="zigbee2mqtt/Door front",
-        field="contact",
-        value=False,
+        topic="zwave/nodeID_15/113/0/Access_Control/Door_state",
+        field="value",
+        value=22,
         label="Front door",
-        delay=True,
-        timeout=3600
+        delay=True
         ),
     "door2": Sensor(
         topic="zwave/nodeID_10/113/0/Access_Control/Door_state",
         field="value",
         value=22,
-        label="Back door",
-        timeout=3600
+        label="Back door"
+        ),
+    "door3": Sensor(
+        topic="zwave/nodeID_11/113/0/Access_Control/Door_state",
+        field="value",
+        value=22,
+        label="2nd floor door"
         ),
     "motion1": Sensor(
         topic="zigbee2mqtt/Motion kitchen",
@@ -203,8 +207,18 @@ sensors = {
         )
     }
 
+sensors["door1"].battery = Sensor(
+        topic="zwave/nodeID_15/128/0/isLow",
+        field="value",
+        value=True
+        )
 sensors["door2"].battery = Sensor(
         topic="zwave/nodeID_10/128/0/isLow",
+        field="value",
+        value=True
+        )
+sensors["door3"].battery = Sensor(
+        topic="zwave/nodeID_11/128/0/isLow",
         field="value",
         value=True
         )
@@ -480,6 +494,7 @@ def check(zone, delayed=False):
     if zone in state.blocked:
         return
 
+    # TODO: This can get triggered if a delayed sensors gets triggered again after entering pending mode
     if state.system in ["armed_away", "pending"]:
         if delayed and not pending_lock.locked():
             threading.Thread(target=pending, args=("armed_away", zone,)).start()
@@ -488,7 +503,8 @@ def check(zone, delayed=False):
 
     if state.system == "armed_home":
         if not triggered_lock.locked():
-            if zone in [zones["door1"]] or zone.label.endswith("tamper"):
+            if (zone in [zones["door1"], zones["door2"], zones["door3"]]
+                    or zone.label.endswith("tamper")):
                 threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
 
