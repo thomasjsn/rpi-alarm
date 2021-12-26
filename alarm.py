@@ -12,6 +12,7 @@ import os
 
 from pushover import Pushover
 import hass
+import healthchecks
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
@@ -626,6 +627,22 @@ def status_check():
         time.sleep(1)
 
 
+def hc_ping():
+    hc_uuid = codes = config["healthchecks"]["uuid"]
+
+    if not hc_uuid:
+        logging.debug("Healthchecks UUID not found, aborting ping.")
+        return
+
+    logging.info("Starting Healthchecks ping with UUID %s", hc_uuid)
+
+    while True:
+        hc_status = healthchecks.ping(hc_uuid)
+        state.data["status"]["healthchecks_ok"] = hc_status
+
+        time.sleep(60)
+
+
 client = mqtt.Client('alarm-test')
 client.on_connect = on_connect
 client.on_disconnect = on_disconnect
@@ -653,6 +670,8 @@ if __name__ == "__main__":
 
     status_check = threading.Thread(target=status_check, args=())
     status_check.start()
+
+    threading.Thread(target=hc_ping, args=()).start()
 
     if args.siren_test and state.system == "disarmed":
         with pending_lock:
