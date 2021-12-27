@@ -116,9 +116,9 @@ inputs = {
     #"zone2": Input(4, "Hallway 2st floor", "motion"),
     #"zone3": Input(17),
     #"zone4": Input(27),
-    #"zone5": Input(),
-    #"zone6": Input(),
-    #"unit_tamper": Input()
+    #"zone5": Input(22),
+    #"zone6": Input(14),
+    #"zone7": Input(15)
     }
 
 outputs = {
@@ -143,7 +143,9 @@ outputs = {
         gpio=26,
         label="Siren outdoor",
         debug=True
-        )
+        ),
+    #"aux1": Output(20),
+    #"aux2": Output(21)
     }
 
 sensors = {
@@ -495,11 +497,10 @@ def check(zone, delayed=False):
     if zone in state.blocked:
         return
 
-    # TODO: This can get triggered if a delayed sensors gets triggered again after entering pending mode
     if state.system in ["armed_away", "pending"]:
         if delayed and not pending_lock.locked():
             threading.Thread(target=pending, args=("armed_away", zone,)).start()
-        elif not triggered_lock.locked():
+        if not delayed and not triggered_lock.locked():
             threading.Thread(target=triggered, args=("armed_away", zone,)).start()
 
     if state.system == "armed_home":
@@ -648,7 +649,7 @@ client.on_connect = on_connect
 client.on_disconnect = on_disconnect
 client.on_message = on_message
 client.will_set("home/alarm_test/availability", "offline")
-client.connect("mqtt.lan.uctrl.net")
+client.connect(config["mqtt"]["host"])
 client.loop_start()
 
 
