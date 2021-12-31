@@ -34,7 +34,7 @@ def discovery(client, entities, inputs):
                     }
 
         #print(json.dumps(payload, indent=4, sort_keys=True))
-        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload))
+        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
 
     for key, input in inputs.items():
         payload = payload_common | {
@@ -47,4 +47,4 @@ def discovery(client, entities, inputs):
         }
 
         #print(json.dumps(payload, indent=4, sort_keys=True))
-        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload))
+        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
