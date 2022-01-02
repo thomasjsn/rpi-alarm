@@ -394,6 +394,7 @@ def siren(i, zone, current_state):
 
     for x in range(i):
         outputs["siren1"].set(True)
+        client.publish("zwave/nodeID_12/37/0/targetValue/set", True)
 
         if zone == zones["emergency"]:
             time.sleep(0.1)
@@ -402,6 +403,7 @@ def siren(i, zone, current_state):
         elif zone.label.endswith("water leak"):
             time.sleep(0.1)
             outputs["siren1"].set(False)
+            client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
             time.sleep(0.9)
 
         else:
@@ -412,11 +414,13 @@ def siren(i, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
+            client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
             logging.info("Siren loop aborted")
             return False
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
+    client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
 
     logging.info("Siren loop completed")
     return True
@@ -518,6 +522,7 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
     client.subscribe("zigbee2mqtt/bridge/state")
+    client.subscribe("homelab/src_status")
 
     #topics = set([sensor.topic for sensor in sensors.values()])
     topics = set()
@@ -535,7 +540,6 @@ def on_connect(client, userdata, flags, rc):
 
     if rc == 0:
         client.connected_flag = True
-        #hass_discovery()
         hass.discovery(client, entities, inputs)
         state.data["status"]["mqtt_connected"] = True
     else:
@@ -547,7 +551,7 @@ def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
     client.disconnect_flag = True
-    state.data["status"]["mqtt_connected"] = True
+    state.data["status"]["mqtt_connected"] = False
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -559,6 +563,10 @@ def on_message(client, userdata, msg):
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
+
+    if msg.topic == "homelab/src_status":
+        state.data["status"]["power_ok"] = y["src2"] == "ok"
+        return
 
     if msg.topic == "home/alarm_test/set":
         action = y["action"]
