@@ -302,9 +302,9 @@ class State:
     def __init__(self):
         self.data = {
             "state": config["system"]["state"],
-            "clear": True,
-            "fault": False,
-            "tamper": False,
+            "clear": None,
+            "fault": None,
+            "tamper": None,
             "zones": {},
             "triggered": {
                 "zone": None,
@@ -520,7 +520,7 @@ def run_led():
         run_led = "led_red" if state.data["fault"] else "led_green"
 
         if state.system == "disarmed":
-            time.sleep(2.5)
+            time.sleep(1.5)
         else:
             time.sleep(0.5)
 
@@ -576,6 +576,7 @@ def on_connect(client, userdata, flags, rc):
 
     if rc == 0:
         client.connected_flag = True
+        state.data["status"]["mqtt_connected"] = True
         hass.discovery(client, entities, inputs)
     else:
         client.bad_connection_flag = True
@@ -585,6 +586,7 @@ def on_connect(client, userdata, flags, rc):
 def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
+    state.data["status"]["mqtt_connected"] = False
     client.disconnect_flag = True
 
 
@@ -669,7 +671,6 @@ def status_check():
             state.data["status"][f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
 
         state.data["status"]["code_attempts"] = state.data["attempts"] < 3
-        state.data["status"]["mqtt_connected"] = client.connected_flag
 
         state.fault()
         time.sleep(1)
@@ -719,10 +720,7 @@ pushover = Pushover(
         )
 
 for z in zones:
-    state.data["zones"][z] = True
-
-for key, input in inputs.items():
-    state.zone(key, input.get())
+    state.data["zones"][z] = None
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
