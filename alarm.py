@@ -13,6 +13,7 @@ import os
 from pushover import Pushover
 import hass
 import healthchecks
+import arduino
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
@@ -96,11 +97,12 @@ class Sensor:
 
 
 class Entity:
-    def __init__(self, field, component, label=None, dev_class=None):
+    def __init__(self, field, component, label=None, dev_class=None, unit=None):
         self.field = field
         self.component = component
         self.label = label
         self.dev_class = dev_class
+        self.unit = unit
 
     def __str__(self):
         return self.label
@@ -116,9 +118,12 @@ inputs = {
     #"zone2": Input(4, "Hallway 2st floor", "motion"),
     #"zone3": Input(17),
     #"zone4": Input(27),
-    #"zone5": Input(22),
-    #"zone6": Input(14),
-    #"zone7": Input(15)
+    #"zone5": Input(14),
+    #"zone6": Input(15),
+    #"zone7": Input(18)
+    #"zone8": Input(22)
+    #"zone9": Input(23)
+    #"zone10": Input(24)
     }
 
 outputs = {
@@ -257,6 +262,20 @@ entities = {
         component="binary_sensor",
         dev_class="tamper",
         label="System tamper"
+        ),
+    "system_temperature": Entity(
+        field="temperature",
+        component="sensor",
+        dev_class="temperature",
+        unit="°C",
+        label="System temperature"
+        ),
+    "system_voltage": Entity(
+        field="battery_v",
+        component="sensor",
+        dev_class="voltage",
+        unit="V",
+        label="System voltage"
         )
     }
 
@@ -291,7 +310,8 @@ class State:
                 "zone": None,
                 "timestamp": None
             },
-            "status": {}
+            "status": {},
+            "attempts": 0
         }
         self._lock = threading.Lock()
         self.blocked = set()
@@ -304,7 +324,7 @@ class State:
         client.publish('home/alarm_test', self.json(), retain=True)
 
         if args.print_payload:
-            print(json.dumps(state.data, indent=4, sort_keys=True))
+            print(json.dumps(self.data, indent=4, sort_keys=True))
 
     @property
     def system(self):
@@ -434,6 +454,7 @@ def arming(user):
         if state.data["clear"]:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
+            state.data["attempts"] = 0
         else:
             logging.error("Unable to arm, zones not clear")
             state.system = "disarmed"
@@ -474,9 +495,24 @@ def disarmed(user):
 
 
 def armed_home(user):
-    state.system = "armed_home"
-    pushover.push(f"System armed home, by {user}")
-    buzzer(1, [0.1, 0.1], "armed_home")
+    home_zones = [
+        state.data["zones"]["door1"],
+        state.data["zones"]["door2"],
+        state.data["zones"]["door3"],
+        state.data["zones"]["ext_tamper"],
+        state.data["zones"]["panel_tamper"]
+    ]
+
+    if any(home_zones):
+        state.system = "armed_home"
+        pushover.push(f"System armed home, by {user}")
+        buzzer(1, [0.1, 0.1], "armed_home")
+        state.data["attempts"] = 0
+    else:
+        logging.error("Unable to arm, zones not clear")
+        state.system = "disarmed"
+        pushover.push("Arming failed, not clear", 1, {"sound": "siren"})
+        buzzer(1, [1, 0], "disarmed")
 
 
 def run_led():
@@ -541,7 +577,6 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         client.connected_flag = True
         hass.discovery(client, entities, inputs)
-        state.data["status"]["mqtt_connected"] = True
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
@@ -551,7 +586,6 @@ def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
     client.disconnect_flag = True
-    state.data["status"]["mqtt_connected"] = False
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -587,6 +621,7 @@ def on_message(client, userdata, msg):
 
         else:
             logging.error("Bad code: %s", code)
+            state.data["attempts"] += 1
 
     if msg.topic == "zigbee2mqtt/Alarm panel":
         action = y["action"]
@@ -607,6 +642,7 @@ def on_message(client, userdata, msg):
 
         elif code is not None:
             logging.error("Bad code: %s", code)
+            state.data["attempts"] += 1
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
@@ -632,12 +668,15 @@ def status_check():
             last_msg_s = round(time.time() - sensor.timestamp)
             state.data["status"][f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
 
+        state.data["status"]["code_attempts"] = state.data["attempts"] < 3
+        state.data["status"]["mqtt_connected"] = client.connected_flag
+
         state.fault()
         time.sleep(1)
 
 
 def hc_ping():
-    hc_uuid = codes = config["healthchecks"]["uuid"]
+    hc_uuid = config["healthchecks"]["uuid"]
 
     if not hc_uuid:
         logging.debug("Healthchecks UUID not found, aborting ping.")
@@ -650,6 +689,18 @@ def hc_ping():
         state.data["status"]["healthchecks_ok"] = hc_status
 
         time.sleep(60)
+
+
+def serial_data():
+    data = arduino.get_data()
+    #print(data)
+
+    state.data["temperature"] = data["temperature"]
+    state.data["battery_v"] = data["voltage1"]
+
+    state.publish()
+
+    time.sleep(10)
 
 
 client = mqtt.Client('alarm-test')
@@ -670,6 +721,9 @@ pushover = Pushover(
 for z in zones:
     state.data["zones"][z] = True
 
+for key, input in inputs.items():
+    state.zone(key, input.get())
+
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
 
@@ -681,6 +735,7 @@ if __name__ == "__main__":
     status_check.start()
 
     threading.Thread(target=hc_ping, args=()).start()
+    threading.Thread(target=serial_data, args=()).start()
 
     if args.siren_test and state.system == "disarmed":
         with pending_lock:

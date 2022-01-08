@@ -33,6 +33,11 @@ def discovery(client, entities, inputs):
                     "device_class": entity.dev_class
                     }
 
+        if entity.unit is not None:
+            payload = payload | {
+                    "unit_of_measurement": entity.unit
+                    }
+
         #print(json.dumps(payload, indent=4, sort_keys=True))
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
 
