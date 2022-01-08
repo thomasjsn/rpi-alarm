@@ -696,8 +696,14 @@ def serial_data():
     data = arduino.get_data()
     #print(data)
 
-    state.data["temperature"] = data["temperature"]
-    state.data["battery_v"] = data["voltage1"]
+    try:
+        state.data["temperature"] = float(data["temperature"])
+        state.data["battery_v"] = float(data["voltage1"])
+
+        state.data["status"]["cabinet_temp"] = float(data["temperature"]) < 30
+
+    except ValueError:
+        logging.error("ValueError on data from Arduino device")
 
     state.publish()
 
