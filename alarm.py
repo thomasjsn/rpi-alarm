@@ -13,7 +13,7 @@ import os
 from pushover import Pushover
 import hass
 import healthchecks
-import arduino
+from arduino import Arduino
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
@@ -34,7 +34,7 @@ args = parser.parse_args()
 class Input:
     def __init__(self, gpio, label=None, dev_class=None, delay=False):
         self.gpio = gpio
-        self.label = label
+        self.label = label or f"Input {self.gpio}"
         self.dev_class = dev_class
         self.delay = delay
 
@@ -55,7 +55,7 @@ class Input:
 class Output:
     def __init__(self, gpio, label=None, debug=False):
         self.gpio = gpio
-        self.label = label
+        self.label = label or f"Output {self.gpio}"
         self.debug = debug
 
     def __str__(self):
@@ -114,16 +114,16 @@ inputs = {
         label="External tamper",
         dev_class="tamper"
         ),
-    #"zone1": Input(3, "Hallway 1st floor", "motion"),
-    #"zone2": Input(4, "Hallway 2st floor", "motion"),
-    #"zone3": Input(17),
-    #"zone4": Input(27),
-    #"zone5": Input(14),
-    #"zone6": Input(15),
-    #"zone7": Input(18)
-    #"zone8": Input(22)
-    #"zone9": Input(23)
-    #"zone10": Input(24)
+    "zone01": Input(3, "1st floor hallway", "motion"),
+    #"zone02": Input(4),
+    #"zone03": Input(17),
+    #"zone04": Input(27),
+    #"zone05": Input(14),
+    #"zone06": Input(15),
+    #"zone07": Input(18),
+    #"zone08": Input(22),
+    #"zone09": Input(23),
+    #"ext_tamper": Input(24, "External tamper", "tamper")
     }
 
 outputs = {
@@ -136,7 +136,7 @@ outputs = {
         label="Green LED"
         ),
     "buzzer": Output(
-        gpio=13,
+        gpio=16,
         label="Buzzer"
         ),
     "siren1": Output(
@@ -149,26 +149,27 @@ outputs = {
         label="Siren outdoor",
         debug=True
         ),
-    #"aux1": Output(20),
-    #"aux2": Output(21)
+    #"aux1": Output(13),
+    #"aux2": Output(20),
+    #"aux3": Output(21)
     }
 
 sensors = {
     "door1": Sensor(
-        topic="zwave/nodeID_15/113/0/Access_Control/Door_state",
+        topic="zwave/Front_door/113/0/Access_Control/Door_state",
         field="value",
         value=22,
         label="Front door",
         delay=True
         ),
     "door2": Sensor(
-        topic="zwave/nodeID_10/113/0/Access_Control/Door_state",
+        topic="zwave/Back_door/113/0/Access_Control/Door_state",
         field="value",
         value=22,
         label="Back door"
         ),
     "door3": Sensor(
-        topic="zwave/nodeID_11/113/0/Access_Control/Door_state",
+        topic="zwave/2nd_floor_door/113/0/Access_Control/Door_state",
         field="value",
         value=22,
         label="2nd floor door"
@@ -216,17 +217,17 @@ sensors = {
     }
 
 sensors["door1"].battery = Sensor(
-        topic="zwave/nodeID_15/128/0/isLow",
+        topic="zwave/Front_door/128/0/isLow",
         field="value",
         value=True
         )
 sensors["door2"].battery = Sensor(
-        topic="zwave/nodeID_10/128/0/isLow",
+        topic="zwave/Back_door/128/0/isLow",
         field="value",
         value=True
         )
 sensors["door3"].battery = Sensor(
-        topic="zwave/nodeID_11/128/0/isLow",
+        topic="zwave/2nd_floor_door/128/0/isLow",
         field="value",
         value=True
         )
@@ -385,8 +386,8 @@ class State:
 
             if fault:
                 faulted_status = ",".join([k for k, v in self.data["status"].items() if not v])
-                logging.error("System fault: %s", faulted_status)
-                pushover.push(f"System fault: {faulted_status}")
+                logging.error("System check failed: %s", faulted_status)
+                pushover.push(f"System check failed: {faulted_status}")
             else:
                 logging.info("System status restored")
                 pushover.push("System status restored")
@@ -414,7 +415,7 @@ def siren(i, zone, current_state):
 
     for x in range(i):
         outputs["siren1"].set(True)
-        client.publish("zwave/nodeID_12/37/0/targetValue/set", True)
+        client.publish("zwave/Alarm_siren/37/0/targetValue/set", True)
 
         if zone == zones["emergency"]:
             time.sleep(0.1)
@@ -423,7 +424,7 @@ def siren(i, zone, current_state):
         elif zone.label.endswith("water leak"):
             time.sleep(0.1)
             outputs["siren1"].set(False)
-            client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
+            client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             time.sleep(0.9)
 
         else:
@@ -434,13 +435,13 @@ def siren(i, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
-            client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
+            client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             logging.info("Siren loop aborted")
             return False
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
-    client.publish("zwave/nodeID_12/37/0/targetValue/set", False)
+    client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
 
     logging.info("Siren loop completed")
     return True
@@ -503,7 +504,7 @@ def armed_home(user):
         state.data["zones"]["panel_tamper"]
     ]
 
-    if any(home_zones):
+    if not any(home_zones):
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
         buzzer(1, [0.1, 0.1], "armed_home")
@@ -601,7 +602,7 @@ def on_message(client, userdata, msg):
     y = json.loads(str(msg.payload.decode('utf-8')))
 
     if msg.topic == "homelab/src_status":
-        state.data["status"]["power_ok"] = y["src2"] == "ok"
+        state.data["status"]["mains_power_ok"] = y["src2"] == "ok"
         return
 
     if msg.topic == "home/alarm_test/set":
@@ -691,23 +692,35 @@ def hc_ping():
 
         time.sleep(60)
 
-
 def serial_data():
-    data = arduino.get_data()
-    #print(data)
+    while True:
+        data = arduino.data
 
-    try:
-        state.data["temperature"] = float(data["temperature"])
-        state.data["battery_v"] = float(data["voltage1"])
+        if data == "":
+            time.sleep(1)
+            continue
 
-        state.data["status"]["cabinet_temp"] = float(data["temperature"]) < 30
+        if args.print_payload:
+            print(json.dumps(data, indent=4, sort_keys=True))
 
-    except ValueError:
-        logging.error("ValueError on data from Arduino device")
+        try:
+            state.data["temperature"] = float(data["temperature"])
+            state.data["battery_v"] = float(data["voltage1"])
 
-    state.publish()
+            state.data["status"]["cabinet_temp"] = float(data["temperature"]) < 30
 
-    time.sleep(10)
+        except ValueError:
+            logging.error("ValueError on data from Arduino device")
+
+        #state.data["status"]["mains_power_ok"] = data["inputs"][0] is True
+        state.data["status"]["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
+        state.data["status"]["siren1_not_blocked"] = data["outputs"][0] is False
+        state.data["status"]["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
+        state.data["status"]["siren2_not_blocked"] = data["outputs"][1] is False
+
+        state.publish()
+
+        time.sleep(10)
 
 
 client = mqtt.Client('alarm-test')
@@ -715,15 +728,26 @@ client.on_connect = on_connect
 client.on_disconnect = on_disconnect
 client.on_message = on_message
 client.will_set("home/alarm_test/availability", "offline")
-client.connect(config["mqtt"]["host"])
-client.loop_start()
 
+for attempt in range(5):
+    try:
+        client.connect(config["mqtt"]["host"])
+        client.loop_start()
+    except:
+        logging.error("Unable to connect MQTT, retry... (%d)", attempt)
+        time.sleep(attempt*3)
+    else:
+        break;
+else:
+    logging.error("Unable to connect MQTT, giving up!")
 
 state = State()
 pushover = Pushover(
         config["pushover"]["token"],
         config["pushover"]["user"]
         )
+
+arduino = Arduino()
 
 for z in zones:
     state.data["zones"][z] = None
@@ -735,17 +759,18 @@ if __name__ == "__main__":
     run_led = threading.Thread(target=run_led, args=())
     run_led.start()
 
-    status_check = threading.Thread(target=status_check, args=())
-    status_check.start()
+    threading.Thread(target=status_check, args=()).start()
 
     threading.Thread(target=hc_ping, args=()).start()
+
+    threading.Thread(target=arduino.get_data, args=()).start()
     threading.Thread(target=serial_data, args=()).start()
 
     if args.siren_test and state.system == "disarmed":
         with pending_lock:
-            buzzer(10, [0.25, 0.75], "disarmed")
+            buzzer(10, [0.1, 0.9], "disarmed")
         with triggered_lock:
-            siren(6, zones["ext_tamper"], "disarmed")
+            siren(30, zones["ext_tamper"], "disarmed")
 
         wrapping_up()
         os._exit(os.EX_OK)
