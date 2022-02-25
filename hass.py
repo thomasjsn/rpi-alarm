@@ -1,6 +1,6 @@
 import json
 
-def discovery(client, entities, inputs):
+def discovery(client, entities, inputs, sensors):
     payload_common = {
         "state_topic": "home/alarm_test",
         "enabled_by_default": True,
@@ -38,7 +38,6 @@ def discovery(client, entities, inputs):
                     "unit_of_measurement": entity.unit
                     }
 
-        #print(json.dumps(payload, indent=4, sort_keys=True))
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
 
     for key, input in inputs.items():
@@ -51,5 +50,18 @@ def discovery(client, entities, inputs):
             "payload_on": True,
         }
 
-        #print(json.dumps(payload, indent=4, sort_keys=True))
+        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
+
+    for key, sensor in sensors.items():
+        if sensor.dev_class is None:
+            continue
+        payload = payload_common | {
+            "name": "RPi security alarm " + sensor.label.lower(),
+            "unique_id": "rpi_alarm_" + key,
+            "device_class": sensor.dev_class,
+            "value_template": "{{ value_json.zones." + key + " }}",
+            "payload_off": False,
+            "payload_on": True,
+        }
+
         client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload), retain=True)

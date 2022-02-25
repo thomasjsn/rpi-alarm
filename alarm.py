@@ -80,7 +80,7 @@ class Output:
 
 
 class Sensor:
-    def __init__(self, topic, field, value, label=None, delay=False, timeout=0):
+    def __init__(self, topic, field, value, label=None, delay=False, timeout=0, dev_class=None):
         self.topic = topic
         self.field = field
         self.value = value
@@ -88,6 +88,7 @@ class Sensor:
         self.delay = delay
         self.timeout = timeout
         self.timestamp = time.time()
+        self.dev_class = dev_class
 
     def __str__(self):
         return self.label
@@ -123,7 +124,7 @@ inputs = {
     #"zone07": Input(18),
     #"zone08": Input(22),
     #"zone09": Input(23),
-    #"ext_tamper": Input(24, "External tamper", "tamper")
+    #"1st_floor_tamper": Input(24, "1st floor tamper", "tamper")
     }
 
 outputs = {
@@ -160,47 +161,56 @@ sensors = {
         field="value",
         value=22,
         label="Front door",
-        delay=True
+        delay=True,
+        dev_class="door",
+        timeout=3900
         ),
     "door2": Sensor(
         topic="zwave/Back_door/113/0/Access_Control/Door_state",
         field="value",
         value=22,
-        label="Back door"
+        label="Back door",
+        dev_class="door",
+        timeout=3900
         ),
     "door3": Sensor(
         topic="zwave/2nd_floor_door/113/0/Access_Control/Door_state",
         field="value",
         value=22,
-        label="2nd floor door"
+        label="2nd floor door",
+        dev_class="door",
+        timeout=3900
         ),
-    "motion1": Sensor(
-        topic="zigbee2mqtt/Motion kitchen",
-        field="occupancy",
-        value=True,
-        label="Kitchen",
-        timeout=3600
-        ),
+    #"motion1": Sensor(
+    #    topic="zigbee2mqtt/Motion kitchen",
+    #    field="occupancy",
+    #    value=True,
+    #    label="Kitchen",
+    #    timeout=3600
+    #    ),
     "motion2": Sensor(
         topic="zigbee2mqtt/Motion 2nd floor",
         field="occupancy",
         value=True,
         label="2nd floor",
-        timeout=3600
+        timeout=3600,
+        dev_class="motion"
         ),
     "water_leak1": Sensor(
         topic="zigbee2mqtt/Water leak kitchen",
         field="water_leak",
         value=True,
         label="Kitchen water leak",
-        timeout=3600
+        timeout=3600,
+        dev_class="moisture"
         ),
     "panel_tamper": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="tamper",
         value=True,
         label="Panel tamper",
-        timeout=2100
+        timeout=2100,
+        dev_class="tamper"
         ),
     "panic": Sensor(
         topic="zigbee2mqtt/Alarm panel",
@@ -242,6 +252,22 @@ sensors["water_leak1"].battery = Sensor(
         value=True
         )
 
+sensors["door1"].status = Sensor(
+        topic="zwave/Front_door/status",
+        field="status",
+        value="Awake"
+        )
+sensors["door2"].status = Sensor(
+        topic="zwave/Back_door/status",
+        field="status",
+        value="Awake"
+        )
+sensors["door3"].status = Sensor(
+        topic="zwave/2nd_floor_door/status",
+        field="status",
+        value="Awake"
+        )
+
 zones = inputs | sensors
 
 codes = dict(config["codes"])
@@ -251,6 +277,12 @@ entities = {
         field="triggered.zone",
         component="sensor",
         label="Triggered zone"
+        ),
+    "safe_to_arm": Entity(
+        field="arm_not_ready",
+        component="binary_sensor",
+        dev_class="safety",
+        label="Ready to arm"
         ),
     "system_fault": Entity(
         field="fault",
@@ -312,7 +344,7 @@ class State:
                 "timestamp": None
             },
             "status": {},
-            "attempts": 0
+            "code_attempts": 0
         }
         self._lock = threading.Lock()
         self.blocked = set()
@@ -351,12 +383,13 @@ class State:
 
     def zone(self, zone_key, value):
         zone = zones[zone_key]
-        clear = not any(self.data["zones"].values())
+        #clear = not any(self.data["zones"].values())
         #clear = True
 
-        if self.data["clear"] is not clear:
-            self.data["clear"] = clear
-            logging.info("All zones are clear: %s", self.data['clear'])
+        #if self.data["clear"] is not clear:
+        #    self.data["clear"] = clear
+        #    self.data["clear_to_arm"] = clear
+        #    logging.info("All zones are clear: %s", self.data['clear'])
 
         if self.data["zones"][zone_key] != value:
             self.data["zones"][zone_key] = value
@@ -370,6 +403,10 @@ class State:
 
             for tamper_key, tamper_status in tamper_zones.items():
                 state.data["status"][f"{tamper_key}_ok"] = not tamper_status
+
+            clear = not any(self.data["zones"].values())
+            self.data["clear"] = clear
+            self.data["arm_not_ready"] = not clear
 
             self.publish()
 
@@ -415,7 +452,7 @@ def siren(i, zone, current_state):
 
     for x in range(i):
         outputs["siren1"].set(True)
-        client.publish("zwave/Alarm_siren/37/0/targetValue/set", True)
+        #client.publish("zwave/Alarm_siren/37/0/targetValue/set", True)
 
         if zone == zones["emergency"]:
             time.sleep(0.1)
@@ -424,7 +461,7 @@ def siren(i, zone, current_state):
         elif zone.label.endswith("water leak"):
             time.sleep(0.1)
             outputs["siren1"].set(False)
-            client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
+            #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             time.sleep(0.9)
 
         else:
@@ -435,13 +472,13 @@ def siren(i, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
-            client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
+            #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             logging.info("Siren loop aborted")
             return False
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
-    client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
+    #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
 
     logging.info("Siren loop completed")
     return True
@@ -455,7 +492,7 @@ def arming(user):
         if state.data["clear"]:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
-            state.data["attempts"] = 0
+            state.data["code_attempts"] = 0
         else:
             logging.error("Unable to arm, zones not clear")
             state.system = "disarmed"
@@ -508,7 +545,7 @@ def armed_home(user):
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
         buzzer(1, [0.1, 0.1], "armed_home")
-        state.data["attempts"] = 0
+        state.data["code_attempts"] = 0
     else:
         logging.error("Unable to arm, zones not clear")
         state.system = "disarmed"
@@ -559,6 +596,7 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
     client.subscribe("zigbee2mqtt/bridge/state")
+    client.subscribe("zwave/driver/status")
     client.subscribe("homelab/src_status")
 
     #topics = set([sensor.topic for sensor in sensors.values()])
@@ -569,6 +607,8 @@ def on_connect(client, userdata, flags, rc):
 
         if hasattr(sensor, "battery"):
             topics.add(sensor.battery.topic)
+        if hasattr(sensor, "status"):
+            topics.add(sensor.status.topic)
 
     logging.debug("Topics: %s", topics)
 
@@ -578,7 +618,7 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         client.connected_flag = True
         state.data["status"]["mqtt_connected"] = True
-        hass.discovery(client, entities, inputs)
+        hass.discovery(client, entities, inputs, sensors)
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
@@ -597,6 +637,10 @@ def on_message(client, userdata, msg):
 
     if msg.topic == "zigbee2mqtt/bridge/state":
         state.data["status"]["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
+        return
+
+    if msg.topic == "zwave/driver/status":
+        state.data["status"]["zwave_bridge"] = msg.payload.decode('utf-8') == "true"
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
@@ -624,7 +668,7 @@ def on_message(client, userdata, msg):
 
         else:
             logging.error("Bad code: %s", code)
-            state.data["attempts"] += 1
+            state.data["code_attempts"] += 1
 
     if msg.topic == "zigbee2mqtt/Alarm panel":
         action = y["action"]
@@ -645,7 +689,7 @@ def on_message(client, userdata, msg):
 
         elif code is not None:
             logging.error("Bad code: %s", code)
-            state.data["attempts"] += 1
+            state.data["code_attempts"] += 1
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
@@ -659,7 +703,9 @@ def on_message(client, userdata, msg):
         if hasattr(sensor, 'battery'):
             if msg.topic == sensor.battery.topic:
                 state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
-
+        if hasattr(sensor, 'status'):
+            if msg.topic == sensor.status.topic and y[sensor.status.field] == sensor.status.value:
+                sensor.timestamp = time.time()
 
 
 def status_check():
@@ -671,7 +717,7 @@ def status_check():
             last_msg_s = round(time.time() - sensor.timestamp)
             state.data["status"][f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
 
-        state.data["status"]["code_attempts"] = state.data["attempts"] < 3
+        state.data["status"]["code_attempts"] = state.data["code_attempts"] < 3
 
         state.fault()
         time.sleep(1)
