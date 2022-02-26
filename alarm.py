@@ -347,6 +347,7 @@ class State:
             "code_attempts": 0
         }
         self._lock = threading.Lock()
+        self._faults = []
         self.blocked = set()
 
     def json(self):
@@ -415,14 +416,15 @@ class State:
             logging.debug("Blocked zones: %s", self.blocked)
 
     def fault(self):
-        fault = not all(self.data["status"].values())
+        faults = [k for k, v in self.data["status"].items() if not v]
 
-        if self.data["fault"] is not fault:
-            self.data["fault"] = fault
+        if self._faults != faults:
+            self.data["fault"] = bool(faults)
+            self._faults = faults
             self.publish()
 
-            if fault:
-                faulted_status = ",".join([k for k, v in self.data["status"].items() if not v])
+            if faults:
+                faulted_status = ", ".join(faults)
                 logging.error("System check failed: %s", faulted_status)
                 pushover.push(f"System check failed: {faulted_status}")
             else:
@@ -667,8 +669,8 @@ def on_message(client, userdata, msg):
                 threading.Thread(target=armed_home, args=(user,)).start()
 
         else:
-            logging.error("Bad code: %s", code)
             state.data["code_attempts"] += 1
+            logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
 
     if msg.topic == "zigbee2mqtt/Alarm panel":
         action = y["action"]
@@ -688,8 +690,8 @@ def on_message(client, userdata, msg):
                 threading.Thread(target=armed_home, args=(user,)).start()
 
         elif code is not None:
-            logging.error("Bad code: %s", code)
             state.data["code_attempts"] += 1
+            logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
