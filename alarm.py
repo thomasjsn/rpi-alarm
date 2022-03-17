@@ -157,27 +157,19 @@ outputs = {
 
 sensors = {
     "door1": Sensor(
-        topic="zwave/Front_door/113/0/Access_Control/Door_state",
-        field="value",
-        value=22,
+        topic="zigbee2mqtt/Door front",
+        field="contact",
+        value=False,
         label="Front door",
         delay=True,
         dev_class="door",
         timeout=3900
         ),
     "door2": Sensor(
-        topic="zwave/Back_door/113/0/Access_Control/Door_state",
-        field="value",
-        value=22,
+        topic="zigbee2mqtt/Door back",
+        field="contact",
+        value=False,
         label="Back door",
-        dev_class="door",
-        timeout=3900
-        ),
-    "door3": Sensor(
-        topic="zwave/2nd_floor_door/113/0/Access_Control/Door_state",
-        field="value",
-        value=22,
-        label="2nd floor door",
         dev_class="door",
         timeout=3900
         ),
@@ -227,19 +219,19 @@ sensors = {
     }
 
 sensors["door1"].battery = Sensor(
-        topic="zwave/Front_door/128/0/isLow",
-        field="value",
-        value=True
+        topic="zigbee2mqtt/Door front",
+        field="battery",
+        value=20
         )
 sensors["door2"].battery = Sensor(
-        topic="zwave/Back_door/128/0/isLow",
-        field="value",
-        value=True
+        topic="zigbee2mqtt/Door back",
+        field="battery",
+        value=20
         )
-sensors["door3"].battery = Sensor(
-        topic="zwave/2nd_floor_door/128/0/isLow",
-        field="value",
-        value=True
+sensors["motion2"].battery = Sensor(
+        topic="zigbee2mqtt/Motion 2nd floor",
+        field="battery",
+        value=20
         )
 sensors["panel_tamper"].battery = Sensor(
         topic="zigbee2mqtt/Alarm panel",
@@ -248,25 +240,20 @@ sensors["panel_tamper"].battery = Sensor(
         )
 sensors["water_leak1"].battery = Sensor(
         topic="zigbee2mqtt/Water leak kitchen",
-        field="battery_low",
-        value=True
+        field="battery",
+        value=20
         )
 
-sensors["door1"].status = Sensor(
-        topic="zwave/Front_door/status",
-        field="status",
-        value="Awake"
-        )
-sensors["door2"].status = Sensor(
-        topic="zwave/Back_door/status",
-        field="status",
-        value="Awake"
-        )
-sensors["door3"].status = Sensor(
-        topic="zwave/2nd_floor_door/status",
-        field="status",
-        value="Awake"
-        )
+#sensors["door1"].status = Sensor(
+#        topic="zwave/Front_door/status",
+#        field="status",
+#        value="Awake"
+#        )
+#sensors["door2"].status = Sensor(
+#        topic="zwave/Back_door/status",
+#        field="status",
+#        value="Awake"
+#        )
 
 zones = inputs | sensors
 
@@ -347,7 +334,7 @@ class State:
             "code_attempts": 0
         }
         self._lock = threading.Lock()
-        self._faults = []
+        self._faults = ["mqtt_connected"]
         self.blocked = set()
 
     def json(self):
@@ -424,7 +411,7 @@ class State:
             self.publish()
 
             if faults:
-                faulted_status = ", ".join(faults)
+                faulted_status = ", ".join(faults).upper()
                 logging.error("System check failed: %s", faulted_status)
                 pushover.push(f"System check failed: {faulted_status}")
             else:
@@ -454,7 +441,6 @@ def siren(i, zone, current_state):
 
     for x in range(i):
         outputs["siren1"].set(True)
-        #client.publish("zwave/Alarm_siren/37/0/targetValue/set", True)
 
         if zone == zones["emergency"]:
             time.sleep(0.1)
@@ -463,7 +449,6 @@ def siren(i, zone, current_state):
         elif zone.label.endswith("water leak"):
             time.sleep(0.1)
             outputs["siren1"].set(False)
-            #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             time.sleep(0.9)
 
         else:
@@ -474,13 +459,11 @@ def siren(i, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
-            #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
             logging.info("Siren loop aborted")
             return False
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
-    #client.publish("zwave/Alarm_siren/37/0/targetValue/set", False)
 
     logging.info("Siren loop completed")
     return True
@@ -538,7 +521,7 @@ def armed_home(user):
     home_zones = [
         state.data["zones"]["door1"],
         state.data["zones"]["door2"],
-        state.data["zones"]["door3"],
+        #state.data["zones"]["door3"],
         state.data["zones"]["ext_tamper"],
         state.data["zones"]["panel_tamper"]
     ]
@@ -585,7 +568,7 @@ def check(zone, delayed=False):
 
     if state.system == "armed_home":
         if not triggered_lock.locked():
-            if (zone in [zones["door1"], zones["door2"], zones["door3"]]
+            if (zone in [zones["door1"], zones["door2"]]
                     or zone.label.endswith("tamper")):
                 threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
@@ -598,7 +581,6 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
     client.subscribe("zigbee2mqtt/bridge/state")
-    client.subscribe("zwave/driver/status")
     client.subscribe("homelab/src_status")
 
     #topics = set([sensor.topic for sensor in sensors.values()])
@@ -639,10 +621,6 @@ def on_message(client, userdata, msg):
 
     if msg.topic == "zigbee2mqtt/bridge/state":
         state.data["status"]["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
-        return
-
-    if msg.topic == "zwave/driver/status":
-        state.data["status"]["zwave_bridge"] = msg.payload.decode('utf-8') == "true"
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
@@ -704,7 +682,11 @@ def on_message(client, userdata, msg):
 
         if hasattr(sensor, 'battery'):
             if msg.topic == sensor.battery.topic:
-                state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
+                if type(sensor.battery.value) == int and type(sensor.battery.field) == int:
+                    state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
+                elif type(sensor.battery.value) == bool:
+                    state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
+
         if hasattr(sensor, 'status'):
             if msg.topic == sensor.status.topic and y[sensor.status.field] == sensor.status.value:
                 sensor.timestamp = time.time()
