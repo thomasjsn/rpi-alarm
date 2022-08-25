@@ -173,6 +173,14 @@ sensors = {
         dev_class="door",
         timeout=3900
         ),
+    "door3": Sensor(
+        topic="zigbee2mqtt/Door 2nd floor",
+        field="contact",
+        value=False,
+        label="2nd floor door",
+        dev_class="door",
+        timeout=3900
+        ),
     #"motion1": Sensor(
     #    topic="zigbee2mqtt/Motion kitchen",
     #    field="occupancy",
@@ -225,6 +233,11 @@ sensors["door1"].battery = Sensor(
         )
 sensors["door2"].battery = Sensor(
         topic="zigbee2mqtt/Door back",
+        field="battery",
+        value=20
+        )
+sensors["door3"].battery = Sensor(
+        topic="zigbee2mqtt/Door 2nd floor",
         field="battery",
         value=20
         )
@@ -296,6 +309,11 @@ entities = {
         dev_class="voltage",
         unit="V",
         label="System voltage"
+        ),
+    "walk_test": Entity(
+        field="config.walk_test",
+        component="switch",
+        label="Walk test"
         )
     }
 
@@ -331,7 +349,10 @@ class State:
                 "timestamp": None
             },
             "status": {},
-            "code_attempts": 0
+            "code_attempts": 0,
+            "config": {
+                "walk_test": False
+            }
         }
         self._lock = threading.Lock()
         self._faults = ["mqtt_connected"]
@@ -383,7 +404,7 @@ class State:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
 
-            if value and args.walk_test:
+            if value and (args.walk_test or state.data["config"]["walk_test"]):
                 buzzer(2, [0.2, 0.2], "disarmed")
 
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
@@ -521,7 +542,7 @@ def armed_home(user):
     home_zones = [
         state.data["zones"]["door1"],
         state.data["zones"]["door2"],
-        #state.data["zones"]["door3"],
+        state.data["zones"]["door3"],
         state.data["zones"]["ext_tamper"],
         state.data["zones"]["panel_tamper"]
     ]
@@ -568,7 +589,7 @@ def check(zone, delayed=False):
 
     if state.system == "armed_home":
         if not triggered_lock.locked():
-            if (zone in [zones["door1"], zones["door2"]]
+            if (zone in [zones["door1"], zones["door2"], zones["door3"]]
                     or zone.label.endswith("tamper")):
                 threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
@@ -580,6 +601,7 @@ def on_connect(client, userdata, flags, rc):
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
+    client.subscribe("home/alarm_test/config")
     client.subscribe("zigbee2mqtt/bridge/state")
     client.subscribe("homelab/src_status")
 
@@ -627,6 +649,15 @@ def on_message(client, userdata, msg):
 
     if msg.topic == "homelab/src_status":
         state.data["status"]["mains_power_ok"] = y["src2"] == "ok"
+        return
+
+    if msg.topic == "home/alarm_test/config":
+        cfg_option = y["option"]
+        cfg_value = y["value"]
+
+        logging.info("Config option: %s changed to %s", cfg_option, cfg_value)
+        state.data["config"][cfg_option] = cfg_value
+        state.publish()
         return
 
     if msg.topic == "home/alarm_test/set":

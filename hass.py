@@ -28,6 +28,15 @@ def discovery(client, entities, inputs, sensors):
                     "payload_on": True
                     }
 
+        if entity.component == "switch":
+            payload = payload | {
+                    "payload_off": json.dumps({"option": key, "value": False}),
+                    "payload_on": json.dumps({"option": key, "value": True}),
+                    "state_off": False,
+                    "state_on": True,
+                    "command_topic": "home/alarm_test/config"
+                    }
+
         if entity.dev_class is not None:
             payload = payload | {
                     "device_class": entity.dev_class
