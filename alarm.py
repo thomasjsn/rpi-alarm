@@ -98,13 +98,14 @@ class Sensor:
 
 
 class Entity:
-    def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None):
+    def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None, icon=None):
         self.field = field
         self.component = component
         self.label = label
         self.dev_class = dev_class
         self.unit = unit
         self.category = category
+        self.icon = icon
 
     def __str__(self):
         return self.label
@@ -291,6 +292,7 @@ entities = {
         field="triggered.zone",
         component="sensor",
         label="Triggered zone",
+        icon="alarm-bell",
         category="diagnostic"
         ),
     "safe_to_arm": Entity(

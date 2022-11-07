@@ -47,6 +47,11 @@ def discovery(client, entities, inputs, sensors):
                     "entity_category": entity.category
                     }
 
+        if entity.icon is not None:
+            payload = payload | {
+                    "icon": "mdi:" + entity.icon
+                    }
+
         if entity.unit is not None:
             payload = payload | {
                     "unit_of_measurement": entity.unit
