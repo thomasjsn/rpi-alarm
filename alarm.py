@@ -339,6 +339,20 @@ entities = {
         component="switch",
         label="Walk test",
         category="config"
+        ),
+    "mains_power": Entity(
+        field="status.mains_power_ok",
+        component="binary_sensor",
+        dev_class="power",
+        label="Mains power",
+        category="diagnostic"
+        ),
+    "zigbee_bridge": Entity(
+        field="status.zigbee_bridge",
+        component="binary_sensor",
+        dev_class="connectivity",
+        label="Zigbee bridge",
+        category="diagnostic"
         )
     }
 

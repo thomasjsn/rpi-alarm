@@ -10,7 +10,7 @@ def discovery(client, entities, inputs, sensors):
         "device": {
             "name": "RPi security alarm",
             "identifiers": 202146225,
-            "model": "Raspberry Pi ZeroW security alarm",
+            "model": "Raspberry Pi security alarm",
             "manufacturer": "The Cavelab"
         }
     }
