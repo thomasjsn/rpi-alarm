@@ -290,13 +290,15 @@ entities = {
     "triggered_zone": Entity(
         field="triggered.zone",
         component="sensor",
-        label="Triggered zone"
+        label="Triggered zone",
+        category="diagnostic"
         ),
     "safe_to_arm": Entity(
         field="arm_not_ready",
         component="binary_sensor",
         dev_class="safety",
-        label="Ready to arm"
+        label="Ready to arm",
+        category="diagnostic"
         ),
     "system_fault": Entity(
         field="fault",
@@ -309,7 +311,8 @@ entities = {
         field="tamper",
         component="binary_sensor",
         dev_class="tamper",
-        label="System tamper"
+        label="System tamper",
+        category="diagnostic"
         ),
     "system_temperature": Entity(
         field="temperature",
