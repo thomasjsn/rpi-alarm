@@ -98,12 +98,25 @@ class Sensor:
 
 
 class Entity:
-    def __init__(self, field, component, label=None, dev_class=None, unit=None):
+    def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None):
         self.field = field
         self.component = component
         self.label = label
         self.dev_class = dev_class
         self.unit = unit
+        self.category = category
+
+    def __str__(self):
+        return self.label
+
+
+class ZoneTimer:
+    def __init__(self, zones, zone_value, seconds, label=None):
+        self.zones = zones
+        self.zone_value = zone_value
+        self.seconds = seconds
+        self.label = label
+        self.timestamp = time.time()
 
     def __str__(self):
         return self.label
@@ -181,19 +194,20 @@ sensors = {
         dev_class="door",
         timeout=3900
         ),
-    #"motion1": Sensor(
-    #    topic="zigbee2mqtt/Motion kitchen",
-    #    field="occupancy",
-    #    value=True,
-    #    label="Kitchen",
-    #    timeout=3600
-    #    ),
+    "motion1": Sensor(
+        topic="zigbee2mqtt/Motion kitchen",
+        field="occupancy",
+        value=True,
+        label="Kitchen",
+        timeout=3900,
+        dev_class="motion"
+        ),
     "motion2": Sensor(
         topic="zigbee2mqtt/Motion 2nd floor",
         field="occupancy",
         value=True,
         label="2nd floor",
-        timeout=3600,
+        timeout=3900,
         dev_class="motion"
         ),
     "water_leak1": Sensor(
@@ -288,7 +302,8 @@ entities = {
         field="fault",
         component="binary_sensor",
         dev_class="problem",
-        label="System status"
+        label="System status",
+        category="diagnostic"
         ),
     "system_tamper": Entity(
         field="tamper",
@@ -301,21 +316,51 @@ entities = {
         component="sensor",
         dev_class="temperature",
         unit="°C",
-        label="System temperature"
+        label="System temperature",
+        category="diagnostic"
         ),
     "system_voltage": Entity(
         field="battery_v",
         component="sensor",
         dev_class="voltage",
         unit="V",
-        label="System voltage"
+        label="System voltage",
+        category="diagnostic"
+        ),
+    "battery_low": Entity(
+        field="battery_low",
+        component="binary_sensor",
+        dev_class="battery",
+        label="Battery low",
+        category="diagnostic"
         ),
     "walk_test": Entity(
         field="config.walk_test",
         component="switch",
-        label="Walk test"
+        label="Walk test",
+        category="config"
         )
     }
+
+zone_timers = {
+    "hallway_motion": ZoneTimer(
+        zones=[
+            zones["zone01"],
+            zones["motion2"]
+        ],
+        zone_value=True,
+        seconds=30,
+        label="Hallway motion"
+    ),
+    "kitchen_motion": ZoneTimer(
+        zones=[
+            zones["motion1"]
+        ],
+        zone_value=True,
+        seconds=3600,
+        label="Kitchen motion"
+    )
+}
 
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
@@ -349,6 +394,7 @@ class State:
                 "timestamp": None
             },
             "status": {},
+            "zone_timers": {},
             "code_attempts": 0,
             "config": {
                 "walk_test": False
@@ -404,6 +450,11 @@ class State:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
 
+            for timer in zone_timers.values():
+                if zone in timer.zones and value == timer.zone_value:
+                    #print("FOUND IN TIMER!")
+                    timer.timestamp = time.time()
+
             if value and (args.walk_test or state.data["config"]["walk_test"]):
                 buzzer(2, [0.2, 0.2], "disarmed")
 
@@ -438,6 +489,16 @@ class State:
             else:
                 logging.info("System status restored")
                 pushover.push("System status restored")
+
+    def zone_timer(self, timer_key):
+        timer = zone_timers[timer_key]
+        last_msg_s = round(time.time() - timer.timestamp)
+        value = last_msg_s < timer.seconds
+
+        if self.data["zone_timers"][timer_key] != value:
+            self.data["zone_timers"][timer_key] = value
+            logging.info("Zone timer: %s changed to %s", timer, value)
+            self.publish()
 
 
 def buzzer(i, x, current_state):
@@ -734,6 +795,9 @@ def status_check():
 
         state.data["status"]["code_attempts"] = state.data["code_attempts"] < 3
 
+        for key, timer in zone_timers.items():
+            state.zone_timer(key)
+
         state.fault()
         time.sleep(1)
 
@@ -779,6 +843,8 @@ def serial_data():
         state.data["status"]["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.data["status"]["siren2_not_blocked"] = data["outputs"][1] is False
 
+        state.data["battery_low"] = False;
+
         state.publish()
 
         time.sleep(10)
@@ -812,6 +878,9 @@ arduino = Arduino()
 
 for z in zones:
     state.data["zones"][z] = None
+
+for t in zone_timers.keys():
+    state.data["zone_timers"][t] = None
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
