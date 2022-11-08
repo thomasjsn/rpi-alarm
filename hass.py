@@ -87,7 +87,7 @@ def discovery(client, entities, inputs, sensors, zone_timers):
 
     for key, timer in zone_timers.items():
         payload = payload_common | {
-            "name": "RPi security alarm " + timer.label.lower(),
+            "name": "RPi security alarm " + timer.label.lower() + " timer",
             "unique_id": "rpi_alarm_timer_" + key,
             "value_template": "{{ value_json.zone_timers." + key + " }}",
             "payload_off": False,

@@ -24,6 +24,7 @@ config.read('config.ini')
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
+parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
 parser.add_argument('--siren-test', dest='siren_test', action='store_true', help="sirens test (loud)")
 #parser.add_argument('--walk-test', dest='walk_test', action='store_true', help="signal when zones trigger")
 #parser.set_defaults(feature=True)
@@ -112,11 +113,12 @@ class Entity:
 
 
 class ZoneTimer:
-    def __init__(self, zones, zone_value, seconds, label=None):
+    def __init__(self, zones, zone_value, seconds, label=None, blocked_state=[]):
         self.zones = zones
         self.zone_value = zone_value
         self.seconds = seconds
         self.label = label
+        self.blocked_state = blocked_state
         self.timestamp = time.time()
 
     def __str__(self):
@@ -366,13 +368,15 @@ zone_timers = {
         zones=["zone01","motion2"],
         zone_value=True,
         seconds=30,
-        label="Hallway motion"
+        label="Hallway motion",
+        blocked_state=["armed_away"]
     ),
     "kitchen_motion": ZoneTimer(
         zones=["motion1"],
         zone_value=True,
         seconds=3600,
-        label="Kitchen motion"
+        label="Kitchen motion",
+        blocked_state=["armed_away","armed_home"]
     )
 }
 
@@ -469,7 +473,7 @@ class State:
                     logging.debug("Zone: %s found in timer %s", zone, timer_key)
                     self.zone_timer(timer_key)
 
-            if value and (args.walk_test or state.data["config"]["walk_test"]):
+            if value and (state.data["config"]["walk_test"]):
                 buzzer(2, [0.2, 0.2], "disarmed")
 
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
@@ -511,6 +515,9 @@ class State:
             if self.data["zones"][zone_key] == timer.zone_value:
                 timer.timestamp = time.time()
 
+        if state.system in timer.blocked_state:
+            timer.timestamp = time.time() - timer.seconds
+
         last_msg_s = round(time.time() - timer.timestamp)
         value = last_msg_s < timer.seconds
 
@@ -518,6 +525,9 @@ class State:
             self.data["zone_timers"][timer_key] = value
             logging.info("Zone timer: %s changed to %s", timer, value)
             self.publish()
+
+        if args.print_timers and value:
+            print(f"{timer}: {datetime.timedelta(seconds=timer.seconds-last_msg_s)}")
 
 
 def buzzer(i, x, current_state):
