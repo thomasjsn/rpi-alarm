@@ -1,6 +1,6 @@
 import json
 
-def discovery(client, entities, inputs, sensors):
+def discovery(client, entities, inputs, sensors, zone_timers):
     payload_common = {
         "state_topic": "home/alarm_test",
         "enabled_by_default": True,
@@ -84,3 +84,26 @@ def discovery(client, entities, inputs, sensors):
         }
 
         client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
+
+    for key, timer in zone_timers.items():
+        payload = payload_common | {
+            "name": "RPi security alarm " + timer.label.lower(),
+            "unique_id": "rpi_alarm_timer_" + key,
+            "value_template": "{{ value_json.zone_timers." + key + " }}",
+            "payload_off": False,
+            "payload_on": True,
+            "icon": "mdi:timer"
+        }
+
+        client.publish(f'homeassistant/binary_sensor/rpi_alarm/timer_{key}/config', json.dumps(payload), retain=True)
+
+    alarm_control_panel = payload_common | {
+        "name": "RPi security alarm panel",
+        "unique_id": "rpi_alarm_panel",
+        "value_template": "{{ value_json.state }}",
+        "command_topic": "home/alarm_test/set",
+        "code": "REMOTE_CODE",
+        "command_template": "{ \"action\": \"{{ action }}\", \"code\": \"{{ code }}\" }"
+    }
+
+    client.publish(f'homeassistant/alarm_control_panel/rpi_alarm/alarm_panel/config', json.dumps(alarm_control_panel), retain=True)

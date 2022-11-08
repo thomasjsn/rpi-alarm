@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
 parser.add_argument('--siren-test', dest='siren_test', action='store_true', help="sirens test (loud)")
-parser.add_argument('--walk-test', dest='walk_test', action='store_true', help="signal when zones trigger")
+#parser.add_argument('--walk-test', dest='walk_test', action='store_true', help="signal when zones trigger")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
 
@@ -363,18 +363,13 @@ entities = {
 
 zone_timers = {
     "hallway_motion": ZoneTimer(
-        zones=[
-            zones["zone01"],
-            zones["motion2"]
-        ],
+        zones=["zone01","motion2"],
         zone_value=True,
         seconds=30,
         label="Hallway motion"
     ),
     "kitchen_motion": ZoneTimer(
-        zones=[
-            zones["motion1"]
-        ],
+        zones=["motion1"],
         zone_value=True,
         seconds=3600,
         label="Kitchen motion"
@@ -469,10 +464,10 @@ class State:
             self.data["zones"][zone_key] = value
             logging.info("Zone: %s changed to %s", zone, value)
 
-            for timer in zone_timers.values():
-                if zone in timer.zones and value == timer.zone_value:
-                    #print("FOUND IN TIMER!")
-                    timer.timestamp = time.time()
+            for timer_key, timer in zone_timers.items():
+                if zone_key in timer.zones:
+                    logging.debug("Zone: %s found in timer %s", zone, timer_key)
+                    self.zone_timer(timer_key)
 
             if value and (args.walk_test or state.data["config"]["walk_test"]):
                 buzzer(2, [0.2, 0.2], "disarmed")
@@ -511,6 +506,11 @@ class State:
 
     def zone_timer(self, timer_key):
         timer = zone_timers[timer_key]
+
+        for zone_key in timer.zones:
+            if self.data["zones"][zone_key] == timer.zone_value:
+                timer.timestamp = time.time()
+
         last_msg_s = round(time.time() - timer.timestamp)
         value = last_msg_s < timer.seconds
 
@@ -704,7 +704,7 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         client.connected_flag = True
         state.data["status"]["mqtt_connected"] = True
-        hass.discovery(client, entities, inputs, sensors)
+        hass.discovery(client, entities, inputs, sensors, zone_timers)
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
