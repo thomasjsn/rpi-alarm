@@ -18,9 +18,13 @@ def discovery(client, entities, inputs, sensors, zone_timers):
     for key, entity in entities.items():
         payload = payload_common | {
             "name": "RPi security alarm " + entity.label.lower(),
-            "unique_id": "rpi_alarm_" + key,
-            "value_template": "{{ value_json." + entity.field + " }}"
+            "unique_id": "rpi_alarm_" + key
         }
+
+        if entity.field is not None:
+            payload = payload | {
+                "value_template": "{{ value_json." + entity.field + " }}"
+            }
 
         if entity.component == "binary_sensor":
             payload = payload | {
@@ -35,6 +39,12 @@ def discovery(client, entities, inputs, sensors, zone_timers):
                     "state_off": False,
                     "state_on": True,
                     "command_topic": "home/alarm_test/config"
+                    }
+
+        if entity.component == "button":
+            payload = payload | {
+                    "payload_press": json.dumps({"option": key, "value": True}),
+                    "command_topic": "home/alarm_test/action"
                     }
 
         if entity.dev_class is not None:

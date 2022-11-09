@@ -25,8 +25,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
 parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
-parser.add_argument('--siren-test', dest='siren_test', action='store_true', help="sirens test (loud)")
-#parser.add_argument('--walk-test', dest='walk_test', action='store_true', help="signal when zones trigger")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
 
@@ -244,34 +242,39 @@ sensors = {
     }
 
 sensors["door1"].battery = Sensor(
-        topic="zigbee2mqtt/Door front",
+        topic=sensors["door1"].topic,
         field="battery",
         value=20
         )
 sensors["door2"].battery = Sensor(
-        topic="zigbee2mqtt/Door back",
+        topic=sensors["door2"].topic,
         field="battery",
         value=20
         )
 sensors["door3"].battery = Sensor(
-        topic="zigbee2mqtt/Door 2nd floor",
+        topic=sensors["door3"].topic,
+        field="battery",
+        value=20
+        )
+sensors["motion1"].battery = Sensor(
+        topic=sensors["motion1"].topic,
         field="battery",
         value=20
         )
 sensors["motion2"].battery = Sensor(
-        topic="zigbee2mqtt/Motion 2nd floor",
+        topic=sensors["motion2"].topic,
+        field="battery",
+        value=20
+        )
+sensors["water_leak1"].battery = Sensor(
+        topic=sensors["water_leak1"].topic,
         field="battery",
         value=20
         )
 sensors["panel_tamper"].battery = Sensor(
-        topic="zigbee2mqtt/Alarm panel",
+        topic=sensors["panel_tamper"].topic,
         field="battery_low",
         value=True
-        )
-sensors["water_leak1"].battery = Sensor(
-        topic="zigbee2mqtt/Water leak kitchen",
-        field="battery",
-        value=20
         )
 
 #sensors["door1"].status = Sensor(
@@ -279,10 +282,11 @@ sensors["water_leak1"].battery = Sensor(
 #        field="status",
 #        value="Awake"
 #        )
-#sensors["door2"].status = Sensor(
-#        topic="zwave/Back_door/status",
-#        field="status",
-#        value="Awake"
+
+#sensors["door1"].linkquality = Sensor(
+#        topic="zigbee2mqtt/Door front",
+#        field="linkquality",
+#        value=50
 #        )
 
 zones = inputs | sensors
@@ -345,6 +349,14 @@ entities = {
         field="config.walk_test",
         component="switch",
         label="Walk test",
+        icon="walk",
+        category="config"
+        ),
+    "siren_test": Entity(
+        field=None,
+        component="button",
+        label="Siren test",
+        icon="bullhorn",
         category="config"
         ),
     "mains_power": Entity(
@@ -692,6 +704,7 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
     client.subscribe("home/alarm_test/set")
     client.subscribe("home/alarm_test/config")
+    client.subscribe("home/alarm_test/action")
     client.subscribe("zigbee2mqtt/bridge/state")
     client.subscribe("homelab/src_status")
 
@@ -705,6 +718,8 @@ def on_connect(client, userdata, flags, rc):
             topics.add(sensor.battery.topic)
         if hasattr(sensor, "status"):
             topics.add(sensor.status.topic)
+        if hasattr(sensor, "linkquality"):
+            topics.add(sensor.linkquality.topic)
 
     logging.debug("Topics: %s", topics)
 
@@ -748,6 +763,20 @@ def on_message(client, userdata, msg):
         logging.info("Config option: %s changed to %s", cfg_option, cfg_value)
         state.data["config"][cfg_option] = cfg_value
         state.publish()
+        return
+
+    if msg.topic == "home/alarm_test/action":
+        act_option = y["option"]
+        act_value = y["value"]
+
+        logging.info("Action triggered: %s changed to %s", act_option, act_value)
+
+        if act_option == "siren_test" and act_value:
+            with pending_lock:
+                buzzer(10, [0.1, 0.9], "disarmed")
+            with triggered_lock:
+                siren(30, zones["ext_tamper"], "disarmed")
+
         return
 
     if msg.topic == "home/alarm_test/set":
@@ -803,14 +832,20 @@ def on_message(client, userdata, msg):
 
         if hasattr(sensor, 'battery'):
             if msg.topic == sensor.battery.topic:
-                if type(sensor.battery.value) == int and type(sensor.battery.field) == int:
+                if type(sensor.battery.value) == int and type(y[sensor.battery.field]) == int:
                     state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
                 elif type(sensor.battery.value) == bool:
                     state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
+                #print(f"Sensor {key} battery: {y[sensor.battery.field]}")
 
         if hasattr(sensor, 'status'):
             if msg.topic == sensor.status.topic and y[sensor.status.field] == sensor.status.value:
                 sensor.timestamp = time.time()
+
+        if hasattr(sensor, 'linkquality'):
+            if msg.topic == sensor.linkquality.topic:
+                state.data["status"][f"sensor_{key}_linkquality"] = y[sensor.linkquality.field] > sensor.linkquality.value
+                #print(f"Sensor {key} linkquality: {y[sensor.linkquality.field]}")
 
 
 def status_check():
@@ -924,15 +959,6 @@ if __name__ == "__main__":
 
     threading.Thread(target=arduino.get_data, args=()).start()
     threading.Thread(target=serial_data, args=()).start()
-
-    if args.siren_test and state.system == "disarmed":
-        with pending_lock:
-            buzzer(10, [0.1, 0.9], "disarmed")
-        with triggered_lock:
-            siren(30, zones["ext_tamper"], "disarmed")
-
-        wrapping_up()
-        os._exit(os.EX_OK)
 
     while True:
         time.sleep(0.01)
