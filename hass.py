@@ -96,7 +96,7 @@ def discovery(client, entities, inputs, sensors, zone_timers):
         client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config', json.dumps(payload), retain=True)
 
     for key, timer in zone_timers.items():
-        payload = payload_common | {
+        payload_binary_sensor = payload_common | {
             "name": "RPi security alarm " + timer.label.lower() + " timer",
             "unique_id": "rpi_alarm_timer_" + key,
             "value_template": "{{ value_json.zone_timers." + key + " }}",
@@ -104,8 +104,16 @@ def discovery(client, entities, inputs, sensors, zone_timers):
             "payload_on": True,
             "icon": "mdi:timer"
         }
+        client.publish(f'homeassistant/binary_sensor/rpi_alarm/timer_{key}/config', json.dumps(payload_binary_sensor), retain=True)
 
-        client.publish(f'homeassistant/binary_sensor/rpi_alarm/timer_{key}/config', json.dumps(payload), retain=True)
+        payload_button = payload_common | {
+            "name": "RPi security alarm " + timer.label.lower() + " timer cancel",
+            "unique_id": "rpi_alarm_timer_cancel_" + key,
+            "payload_press": json.dumps({"option": "zone_timer_cancel", "value": key}),
+            "command_topic": "home/alarm_test/action",
+            "icon": "mdi:timer-cancel"
+        }
+        client.publish(f'homeassistant/button/rpi_alarm/timer_cancel_{key}/config', json.dumps(payload_button), retain=True)
 
     alarm_control_panel = payload_common | {
         "name": "RPi security alarm panel",

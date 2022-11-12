@@ -114,13 +114,21 @@ class ZoneTimer:
     def __init__(self, zones, zone_value, seconds, label=None, blocked_state=[]):
         self.zones = zones
         self.zone_value = zone_value
-        self.seconds = seconds
+        self.seconds_fb = seconds
         self.label = label
         self.blocked_state = blocked_state
         self.timestamp = time.time()
 
     def __str__(self):
         return self.label
+
+    @property
+    def seconds(self):
+        #return config.getint("zone_timers", timer_key, fallback=self.seconds_fb)
+        return self.seconds_fb
+
+    def cancel(self):
+        self.timestamp = time.time() - self.seconds
 
 
 inputs = {
@@ -528,7 +536,7 @@ class State:
                 timer.timestamp = time.time()
 
         if state.system in timer.blocked_state:
-            timer.timestamp = time.time() - timer.seconds
+            timer.cancel()
 
         last_msg_s = round(time.time() - timer.timestamp)
         value = last_msg_s < timer.seconds
@@ -760,6 +768,10 @@ def on_message(client, userdata, msg):
         cfg_option = y["option"]
         cfg_value = y["value"]
 
+        #with open('config.ini', 'w') as configfile:
+        #    config.set('config', cfg_option, str(cfg_value))
+        #    config.write(configfile)
+
         logging.info("Config option: %s changed to %s", cfg_option, cfg_value)
         state.data["config"][cfg_option] = cfg_value
         state.publish()
@@ -769,13 +781,17 @@ def on_message(client, userdata, msg):
         act_option = y["option"]
         act_value = y["value"]
 
-        logging.info("Action triggered: %s changed to %s", act_option, act_value)
+        logging.info("Action triggered: %s, with value: %s", act_option, act_value)
 
         if act_option == "siren_test" and act_value:
             with pending_lock:
                 buzzer(10, [0.1, 0.9], "disarmed")
             with triggered_lock:
                 siren(30, zones["ext_tamper"], "disarmed")
+
+        if act_option == "zone_timer_cancel" and act_value in zone_timers:
+            timer = zone_timers[act_value]
+            timer.cancel()
 
         return
 
