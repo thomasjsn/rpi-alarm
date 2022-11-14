@@ -14,6 +14,7 @@ from pushover import Pushover
 import hass
 import healthchecks
 from arduino import Arduino
+import battery
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
@@ -24,6 +25,7 @@ config.read('config.ini')
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
+parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
 parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
@@ -353,11 +355,19 @@ entities = {
         category="diagnostic"
         ),
     "system_voltage": Entity(
-        field="battery_v",
+        field="voltage",
         component="sensor",
         dev_class="voltage",
         unit="V",
         label="System voltage",
+        category="diagnostic"
+        ),
+    "battery": Entity(
+        field="battery",
+        component="sensor",
+        dev_class="battery",
+        unit="%",
+        label="Battery",
         category="diagnostic"
         ),
     "battery_low": Entity(
@@ -453,6 +463,7 @@ class State:
         self._lock = threading.Lock()
         self._faults = ["mqtt_connected"]
         self.blocked = set()
+        #self.status = {}
 
     def json(self):
         return json.dumps(self.data)
@@ -927,14 +938,17 @@ def serial_data():
             time.sleep(1)
             continue
 
-        if args.print_payload:
+        if args.print_serial:
             print(json.dumps(data, indent=4, sort_keys=True))
 
         try:
             state.data["temperature"] = float(data["temperature"])
-            state.data["battery_v"] = float(data["voltage1"])
-
             state.data["status"]["cabinet_temp"] = float(data["temperature"]) < 30
+
+            state.data["voltage"] = float(data["voltage1"])
+            state.data["status"]["system_voltage"] = float(data["temperature"]) > 12
+            state.data["battery"] = battery.level(float(data["voltage1"]))
+            state.data["battery_low"] = state.data["battery"] < 50
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
@@ -944,8 +958,6 @@ def serial_data():
         state.data["status"]["siren1_not_blocked"] = data["outputs"][0] is False
         state.data["status"]["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.data["status"]["siren2_not_blocked"] = data["outputs"][1] is False
-
-        state.data["battery_low"] = False;
 
         state.publish()
 
