@@ -25,6 +25,7 @@ config.read('config.ini')
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
+parser.add_argument('--status', dest='print_status', action='store_true', help="print staus object on publish")
 parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
 parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
 #parser.set_defaults(feature=True)
@@ -392,14 +393,14 @@ entities = {
         category="config"
         ),
     "mains_power": Entity(
-        field="status.mains_power_ok",
+        field="mains_power_ok",
         component="binary_sensor",
         dev_class="power",
         label="Mains power",
         category="diagnostic"
         ),
     "zigbee_bridge": Entity(
-        field="status.zigbee_bridge",
+        field="zigbee_bridge",
         component="binary_sensor",
         dev_class="connectivity",
         label="Zigbee bridge",
@@ -453,7 +454,6 @@ class State:
                 "zone": None,
                 "timestamp": None
             },
-            "status": {},
             "zone_timers": {},
             "code_attempts": 0,
             "config": {
@@ -463,7 +463,7 @@ class State:
         self._lock = threading.Lock()
         self._faults = ["mqtt_connected"]
         self.blocked = set()
-        #self.status = {}
+        self.status = {}
 
     def json(self):
         return json.dumps(self.data)
@@ -474,6 +474,9 @@ class State:
 
         if args.print_payload:
             print(json.dumps(self.data, indent=4, sort_keys=True))
+
+        if args.print_status:
+            print(json.dumps(self.status, indent=4, sort_keys=True))
 
     @property
     def system(self):
@@ -517,7 +520,7 @@ class State:
             state.data["tamper"] = any(tamper_zones.values())
 
             for tamper_key, tamper_status in tamper_zones.items():
-                state.data["status"][f"{tamper_key}_ok"] = not tamper_status
+                state.status[f"{tamper_key}_ok"] = not tamper_status
 
             clear = not any(self.data["zones"].values())
             self.data["clear"] = clear
@@ -530,7 +533,7 @@ class State:
             logging.debug("Blocked zones: %s", self.blocked)
 
     def fault(self):
-        faults = [k for k, v in self.data["status"].items() if not v]
+        faults = [k for k, v in self.status.items() if not v]
 
         if self._faults != faults:
             self.data["fault"] = bool(faults)
@@ -539,8 +542,8 @@ class State:
 
             if faults:
                 faulted_status = ", ".join(faults).upper()
-                logging.error("System check failed: %s", faulted_status)
-                pushover.push(f"System check failed: {faulted_status}")
+                logging.error("System check(s) failed: %s", faulted_status)
+                pushover.push(f"System check(s) failed: {faulted_status}")
             else:
                 logging.info("System status restored")
                 pushover.push("System status restored")
@@ -768,7 +771,7 @@ def on_connect(client, userdata, flags, rc):
 
     if rc == 0:
         client.connected_flag = True
-        state.data["status"]["mqtt_connected"] = True
+        state.status["mqtt_connected"] = True
         hass.discovery(client, entities, inputs, sensors, zone_timers)
     else:
         client.bad_connection_flag = True
@@ -778,7 +781,7 @@ def on_connect(client, userdata, flags, rc):
 def on_disconnect(client, userdata, rc):
     logging.info("Disconnecting reason %s", rc)
     client.connected_flag = False
-    state.data["status"]["mqtt_connected"] = False
+    state.status["mqtt_connected"] = False
     client.disconnect_flag = True
 
 
@@ -787,13 +790,15 @@ def on_message(client, userdata, msg):
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
     if msg.topic == "zigbee2mqtt/bridge/state":
-        state.data["status"]["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
+        state.status["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
+        state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
     y = json.loads(str(msg.payload.decode('utf-8')))
 
     if msg.topic == "homelab/src_status":
-        state.data["status"]["mains_power_ok"] = y["src2"] == "ok"
+        state.status["mains_power_ok"] = y["src2"] == "ok"
+        state.data["mains_power_ok"] = state.status["mains_power_ok"]
         return
 
     if msg.topic == "home/alarm_test/config":
@@ -881,9 +886,9 @@ def on_message(client, userdata, msg):
         if hasattr(sensor, 'battery'):
             if msg.topic == sensor.battery.topic and sensor.battery.field in y:
                 if type(sensor.battery.value) == int and type(y[sensor.battery.field]) == int:
-                    state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
+                    state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
                 elif type(sensor.battery.value) == bool:
-                    state.data["status"][f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
+                    state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
                 #print(f"Sensor {key} battery: {y[sensor.battery.field]}")
 
         if hasattr(sensor, 'status'):
@@ -893,7 +898,7 @@ def on_message(client, userdata, msg):
 
         if hasattr(sensor, 'linkquality'):
             if msg.topic == sensor.linkquality.topic and sensor.linkquality.field in y:
-                state.data["status"][f"sensor_{key}_linkquality"] = y[sensor.linkquality.field] > sensor.linkquality.value
+                state.status[f"sensor_{key}_linkquality"] = y[sensor.linkquality.field] > sensor.linkquality.value
                 #print(f"Sensor {key} linkquality: {y[sensor.linkquality.field]}")
 
 
@@ -904,9 +909,9 @@ def status_check():
                 continue
 
             last_msg_s = round(time.time() - sensor.timestamp)
-            state.data["status"][f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
+            state.status[f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
 
-        state.data["status"]["code_attempts"] = state.data["code_attempts"] < 3
+        state.status["code_attempts"] = state.data["code_attempts"] < 3
 
         for key, timer in zone_timers.items():
             state.zone_timer(key)
@@ -926,7 +931,7 @@ def hc_ping():
 
     while True:
         hc_status = healthchecks.ping(hc_uuid)
-        state.data["status"]["healthchecks_ok"] = hc_status
+        state.status["healthchecks_ok"] = hc_status
 
         time.sleep(60)
 
@@ -943,21 +948,21 @@ def serial_data():
 
         try:
             state.data["temperature"] = float(data["temperature"])
-            state.data["status"]["cabinet_temp"] = float(data["temperature"]) < 30
+            state.status["cabinet_temp"] = float(data["temperature"]) < 30
 
             state.data["voltage"] = float(data["voltage1"])
-            state.data["status"]["system_voltage"] = float(data["temperature"]) > 12
+            state.status["system_voltage"] = float(data["temperature"]) > 12
             state.data["battery"] = battery.level(float(data["voltage1"]))
             state.data["battery_low"] = state.data["battery"] < 50
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
 
-        #state.data["status"]["mains_power_ok"] = data["inputs"][0] is True
-        state.data["status"]["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
-        state.data["status"]["siren1_not_blocked"] = data["outputs"][0] is False
-        state.data["status"]["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
-        state.data["status"]["siren2_not_blocked"] = data["outputs"][1] is False
+        #state.status["mains_power_ok"] = data["inputs"][0] is True
+        state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
+        state.status["siren1_not_blocked"] = data["outputs"][0] is False
+        state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
+        state.status["siren2_not_blocked"] = data["outputs"][1] is False
 
         state.publish()
 
