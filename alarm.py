@@ -28,6 +28,7 @@ parser.add_argument('--payload', dest='print_payload', action='store_true', help
 parser.add_argument('--status', dest='print_status', action='store_true', help="print staus object on publish")
 parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
 parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
+parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG","INFO","WARNING"], help="set log level")
 #parser.set_defaults(feature=True)
 args = parser.parse_args()
 
@@ -241,7 +242,7 @@ sensors = {
         ),
     "motion3": Sensor(
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
-        field=None,
+        field="value",
         value="on",
         label="Entrance",
         delay=True,
@@ -437,6 +438,10 @@ zone_timers = {
 
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
+
+if args.log_level:
+    logging.getLogger().setLevel(args.log_level)
+    logging.info("Log level set to %s", args.log_level)
 
 for input in inputs.values():
     GPIO.setup(input.gpio, GPIO.IN)
@@ -806,10 +811,11 @@ def on_message(client, userdata, msg):
     try:
         y = json.loads(str(msg.payload.decode('utf-8')))
     except (json.JSONDecodeError):
-        y =  msg.payload.decode('utf-8')
+        y = {"value": msg.payload.decode('utf-8')}
+        logging.debug("Unable to decode JSON, created object %s", y)
 
     if msg.topic == "zigbee2mqtt/bridge/state":
-        state.status["zigbee_bridge"] = y == "online"
+        state.status["zigbee_bridge"] = y["value"] == "online"
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
@@ -894,15 +900,10 @@ def on_message(client, userdata, msg):
             logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
 
     for key, sensor in sensors.items():
-        if msg.topic == sensor.topic:
-            if type(y) is dict and sensor.field is not None:
-                sensor_value = y[sensor.field]
-            else:
-                sensor_value = y
+        if msg.topic == sensor.topic and sensor.field in y:
+            state.zone(key, y[sensor.field] == sensor.value)
 
-            state.zone(key, sensor_value == sensor.value)
-
-            if sensor_value == sensor.value:
+            if y[sensor.field] == sensor.value:
                 check(sensor)
 
             sensor.timestamp = time.time()
