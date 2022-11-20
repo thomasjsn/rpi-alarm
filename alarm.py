@@ -185,9 +185,13 @@ outputs = {
         label="Siren outdoor",
         debug=True
         ),
-    #"aux1": Output(13),
-    #"aux2": Output(20),
-    #"aux3": Output(21)
+    "beacon": Output(
+        gpio=13,
+        label="Beacon",
+        debug=True
+        ),
+    #"aux1": Output(20),
+    #"aux2": Output(21)
     }
 
 sensors = {
@@ -233,6 +237,14 @@ sensors = {
         value=True,
         label="2nd floor",
         timeout=3900,
+        dev_class="motion"
+        ),
+    "motion3": Sensor(
+        topic="hass2mqtt/binary_sensor/entreen_motion/state",
+        field=None,
+        value="on",
+        label="Entrance",
+        delay=True,
         dev_class="motion"
         ),
     "water_leak1": Sensor(
@@ -614,6 +626,7 @@ def siren(seconds, zone, current_state):
 
     while (start_time + seconds) > time.time():
         outputs["siren1"].set(True)
+        outputs["beacon"].set(True)
 
         if zone == zones["emergency"]:
             time.sleep(0.1)
@@ -637,6 +650,7 @@ def siren(seconds, zone, current_state):
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
+    outputs["beacon"].set(False)
 
     logging.info("Siren loop completed")
     return True
@@ -789,12 +803,15 @@ def on_disconnect(client, userdata, rc):
 def on_message(client, userdata, msg):
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
+    try:
+        y = json.loads(str(msg.payload.decode('utf-8')))
+    except (json.JSONDecodeError):
+        y =  msg.payload.decode('utf-8')
+
     if msg.topic == "zigbee2mqtt/bridge/state":
-        state.status["zigbee_bridge"] = msg.payload.decode('utf-8') == "online"
+        state.status["zigbee_bridge"] = y == "online"
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
-
-    y = json.loads(str(msg.payload.decode('utf-8')))
 
     if msg.topic == "homelab/src_status":
         state.status["mains_power_ok"] = y["src2"] == "ok"
@@ -821,10 +838,12 @@ def on_message(client, userdata, msg):
         logging.info("Action triggered: %s, with value: %s", act_option, act_value)
 
         if act_option == "siren_test" and act_value:
+            #arduino.commands.put("1")
             with pending_lock:
                 buzzer_signal(10, [0.1, 0.9])
             with triggered_lock:
-                siren(30, zones["ext_tamper"], "disarmed")
+                siren(9, zones["ext_tamper"], "disarmed")
+            #arduino.commands.put("1")
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
             timer = zone_timers[act_value]
@@ -876,9 +895,14 @@ def on_message(client, userdata, msg):
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic:
-            state.zone(key, y[sensor.field] == sensor.value)
+            if type(y) is dict and sensor.field is not None:
+                sensor_value = y[sensor.field]
+            else:
+                sensor_value = y
 
-            if y[sensor.field] == sensor.value:
+            state.zone(key, sensor_value == sensor.value)
+
+            if sensor_value == sensor.value:
                 check(sensor)
 
             sensor.timestamp = time.time()
@@ -959,10 +983,9 @@ def serial_data():
             logging.error("ValueError on data from Arduino device")
 
         #state.status["mains_power_ok"] = data["inputs"][0] is True
-        state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
-        state.status["siren1_not_blocked"] = data["outputs"][0] is False
-        state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
-        state.status["siren2_not_blocked"] = data["outputs"][1] is False
+        #state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
+        #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
+        state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
         state.publish()
 
