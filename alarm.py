@@ -391,6 +391,13 @@ entities = {
         label="Battery low",
         category="diagnostic"
         ),
+    "battery_chrg": Entity(
+        field="battery_chrg",
+        component="binary_sensor",
+        dev_class="battery_charging",
+        label="Battery charging",
+        category="diagnostic"
+        ),
     "walk_test": Entity(
         field="config.walk_test",
         component="switch",
@@ -604,7 +611,10 @@ def buzzer(seconds, current_state):
 
     while (start_time + seconds) > time.time():
         if current_state == "arming":
-            buzzer_signal(1, [0.1, 0.9])
+            if any([o.get() for o in home_zones]):
+                buzzer_signal(1, [0.2, 0.8])
+            else:
+                buzzer_signal(1, [0.1, 0.9])
 
         if current_state == "pending":
             buzzer_signal(1, [0.5, 0.5])
@@ -844,12 +854,12 @@ def on_message(client, userdata, msg):
         logging.info("Action triggered: %s, with value: %s", act_option, act_value)
 
         if act_option == "siren_test" and act_value:
-            #arduino.commands.put("1")
+            #arduino.commands.put([1, True])
             with pending_lock:
                 buzzer_signal(10, [0.1, 0.9])
             with triggered_lock:
                 siren(9, zones["ext_tamper"], "disarmed")
-            #arduino.commands.put("1")
+            #arduino.commands.put([1, False])
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
             timer = zone_timers[act_value]
@@ -964,7 +974,7 @@ def serial_data():
     while True:
         data = arduino.data
 
-        if data == "":
+        if not data:
             time.sleep(1)
             continue
 
@@ -972,13 +982,15 @@ def serial_data():
             print(json.dumps(data, indent=4, sort_keys=True))
 
         try:
-            state.data["temperature"] = float(data["temperature"])
-            state.status["cabinet_temp"] = float(data["temperature"]) < 30
+            state.data["temperature"] = data["temperature"]
+            state.status["cabinet_temp"] = data["temperature"] < 30
 
-            state.data["voltage"] = float(data["voltage1"])
-            state.status["system_voltage"] = float(data["temperature"]) > 12
-            state.data["battery"] = battery.level(float(data["voltage1"]))
-            state.data["battery_low"] = state.data["battery"] < 50
+            state.data["voltage"] = data["voltage1"]
+            state.status["system_voltage"] = data["voltage1"] > 12
+
+            state.data["battery"] = battery.level(data["voltage1"])
+            state.data["battery_low"] = data["voltage1"] < 12
+            state.data["battery_chrg"] = data["voltage1"] > 13
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
@@ -1017,7 +1029,7 @@ pushover = Pushover(
         config["pushover"]["user"]
         )
 
-arduino = Arduino()
+arduino = Arduino(logging)
 
 for zone_key, zone in zones.items():
     state.data["zones"][zone_key] = None

@@ -3,16 +3,14 @@ import time
 import queue
 
 class Arduino:
-    def __init__(self):
-        self.data = ""
+    def __init__(self, logging):
+        self.data = {}
         self.commands = queue.Queue()
+        self.logging = logging
 
     def get_data(self):
         with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
             while True:
-                while not self.commands.empty():
-                    ser.write(str.encode(self.command.get()))
-
                 ser.write(str.encode("0"))
                 line = ser.readline()   # read a '\n' terminated line
                 received = line.decode('utf-8').strip()
@@ -31,4 +29,14 @@ class Arduino:
                 }
 
                 self.data = data
+                self.__handle_commands(ser)
+
                 time.sleep(1)
+
+    def __handle_commands(self, ser):
+        while not self.commands.empty():
+            idx, value = self.commands.get()
+
+            if self.data["outputs"][idx] is not value:
+                ser.write(str.encode(str(idx)))
+                self.logging.info("Arduino output %d set to %s", idx, value)
