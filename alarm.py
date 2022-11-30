@@ -142,6 +142,17 @@ class ZoneTimer:
         self.timestamp = time.time() - self.seconds
 
 
+class AlarmPanel:
+    def __init__(self, topic, fields, actions, label=None):
+        self.topic = topic
+        self.fields = fields
+        self.actions = actions
+        self.label = label
+
+    def __str__(self):
+        return self.label
+
+
 inputs = {
     "ext_tamper": Input(
         gpio=2,
@@ -440,6 +451,21 @@ zone_timers = {
         #zone_value=True,
         label="Kitchen motion",
         blocked_state=["armed_away","armed_home"]
+    )
+}
+
+alarm_panels = {
+    "home_assistant": AlarmPanel(
+        topic="home/alarm_test/set",
+        fields={"action":"action", "code":"code"},
+        actions={"disarm":"DISARM", "arm_away":"ARM_AWAY", "arm_home":"ARM_HOME"},
+        label="Home Assistant"
+    ),
+    "climax": AlarmPanel(
+        topic="zigbee2mqtt/Alarm panel",
+        fields={"action":"action", "code":"action_code"},
+        actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
+        label="Climax"
     )
 }
 
@@ -775,13 +801,22 @@ def on_connect(client, userdata, flags, rc):
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
-    client.subscribe("home/alarm_test/set")
-    client.subscribe("home/alarm_test/config")
-    client.subscribe("home/alarm_test/action")
-    client.subscribe("zigbee2mqtt/bridge/state")
-    client.subscribe("homelab/src_status")
+    #client.subscribe("home/alarm_test/set")
+    #client.subscribe("home/alarm_test/config")
+    #client.subscribe("home/alarm_test/action")
+    #client.subscribe("zigbee2mqtt/bridge/state")
+    #client.subscribe("homelab/src_status")
 
     topics = set()
+
+    topics.add("zigbee2mqtt/bridge/state")
+    topics.add("homelab/src_status")
+
+    for option in ["config", "action"]:
+        client.subscribe(f"home/alarm_test/{option}")
+
+    for panel in alarm_panels.values():
+        topics.add(panel.topic)
 
     for sensor in sensors.values():
         topics.add(sensor.topic)
@@ -867,47 +902,70 @@ def on_message(client, userdata, msg):
 
         return
 
-    if msg.topic == "home/alarm_test/set":
-        action = y["action"]
-        code = y.get("code")
+    #if msg.topic == "home/alarm_test/set-void":
+    #    action = y["action"]
+    #    code = y.get("code")
 
-        if code in codes:
-            user = codes[code]
-            logging.info("Action requested: %s by %s", action, user)
+    #    if code in codes:
+    #        user = codes[code]
+    #        logging.info("Action requested: %s by %s", action, user)
 
-            if action == "DISARM":
-                threading.Thread(target=disarmed, args=(user,)).start()
+    #        if action == "DISARM":
+    #            threading.Thread(target=disarmed, args=(user,)).start()
 
-            if action == "ARM_AWAY":
-                threading.Thread(target=arming, args=(user,)).start()
+    #        if action == "ARM_AWAY":
+    #            threading.Thread(target=arming, args=(user,)).start()
 
-            if action == "ARM_HOME":
-                threading.Thread(target=armed_home, args=(user,)).start()
+    #        if action == "ARM_HOME":
+    #            threading.Thread(target=armed_home, args=(user,)).start()
 
-        else:
-            state.data["code_attempts"] += 1
-            logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
+    #    else:
+    #        state.data["code_attempts"] += 1
+    #        logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
 
-    if msg.topic == "zigbee2mqtt/Alarm panel":
-        action = y["action"]
-        code = y.get("action_code")
+    #if msg.topic == "zigbee2mqtt/Alarm panel-void":
+    #    action = y["action"]
+    #    code = y.get("action_code")
 
-        if code in codes:
-            user = codes[code]
-            logging.info("Action requested: %s by %s", action, user)
+    #    if code in codes:
+    #        user = codes[code]
+    #        logging.info("Action requested: %s by %s", action, user)
 
-            if action == "disarm":
-                threading.Thread(target=disarmed, args=(user,)).start()
+    #        if action == "disarm":
+    #            threading.Thread(target=disarmed, args=(user,)).start()
 
-            if action == "arm_all_zones":
-                threading.Thread(target=arming, args=(user,)).start()
+    #        if action == "arm_all_zones":
+    #            threading.Thread(target=arming, args=(user,)).start()
 
-            if action == "arm_day_zones":
-                threading.Thread(target=armed_home, args=(user,)).start()
+    #        if action == "arm_day_zones":
+    #            threading.Thread(target=armed_home, args=(user,)).start()
 
-        elif code is not None:
-            state.data["code_attempts"] += 1
-            logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
+    #    elif code is not None:
+    #        state.data["code_attempts"] += 1
+    #        logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
+
+    for key, panel in alarm_panels.items():
+        if msg.topic == panel.topic:
+            action = y[panel.fields["action"]]
+            code = y.get(panel.fields["code"])
+
+            if code in codes:
+                user = codes[code]
+                logging.info("Panel action, %s: %s by %s", panel, action, user)
+
+                if action == panel.actions["disarm"]:
+                    threading.Thread(target=disarmed, args=(user,)).start()
+
+                if action == panel.actions["arm_away"]:
+                    threading.Thread(target=arming, args=(user,)).start()
+
+                if action == panel.actions["arm_home"]:
+                    threading.Thread(target=armed_home, args=(user,)).start()
+
+            elif code is not None:
+                state.data["code_attempts"] += 1
+                logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
+                buzzer_signal(1, [1, 0])
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic and sensor.field in y:
