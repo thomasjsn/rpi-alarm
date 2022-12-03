@@ -340,7 +340,7 @@ sensors["panel_tamper"].battery = Sensor(
 
 zones = inputs | sensors
 
-codes = dict(config["codes"])
+codes = dict(config.items("codes"))
 
 entities = {
     "triggered_zone": Entity(
@@ -495,7 +495,7 @@ atexit.register(wrapping_up)
 class State:
     def __init__(self):
         self.data = {
-            "state": config["system"]["state"],
+            "state": config.get("system", "state"),
             "clear": None,
             "fault": None,
             "tamper": None,
@@ -507,7 +507,7 @@ class State:
             "zone_timers": {},
             "code_attempts": 0,
             "config": {
-                "walk_test": False
+                "walk_test": config.getboolean("config", "walk_test", fallback=False)
             }
         }
         self._lock = threading.Lock()
@@ -541,7 +541,7 @@ class State:
 
             if state in ["disarmed", "armed_home", "armed_away"]:
                 with open('config.ini', 'w') as configfile:
-                    config["system"]["state"] = state
+                    config.set("system", "state", state)
                     config.write(configfile)
 
     def triggered(self, zone):
@@ -699,7 +699,7 @@ def siren(seconds, zone, current_state):
 
 def arming(user):
     state.system = "arming"
-    arming_time = int(config["times"]["arming"])
+    arming_time = config.getint("times", "arming")
 
     if buzzer(arming_time, "arming") is True:
         if state.data["clear"]:
@@ -714,7 +714,7 @@ def arming(user):
 
 
 def pending(current_state, zone):
-    delay_time = int(config["times"]["delay"])
+    delay_time = config.getint("times", "delay")
 
     with pending_lock:
         state.system = "pending"
@@ -725,7 +725,7 @@ def pending(current_state, zone):
 
 
 def triggered(current_state, zone):
-    trigger_time = int(config["times"]["trigger"])
+    trigger_time = config.getint("times", "trigger")
 
     with triggered_lock:
         state.triggered(zone)
@@ -873,9 +873,9 @@ def on_message(client, userdata, msg):
         cfg_option = y["option"]
         cfg_value = y["value"]
 
-        #with open('config.ini', 'w') as configfile:
-        #    config.set('config', cfg_option, str(cfg_value))
-        #    config.write(configfile)
+        with open('config.ini', 'w') as configfile:
+            config.set('config', cfg_option, str(cfg_value))
+            config.write(configfile)
 
         logging.info("Config option: %s changed to %s", cfg_option, cfg_value)
         state.data["config"][cfg_option] = cfg_value
@@ -1014,7 +1014,7 @@ def status_check():
 
 
 def hc_ping():
-    hc_uuid = config["healthchecks"]["uuid"]
+    hc_uuid = config.get("healthchecks", "uuid")
 
     if not hc_uuid:
         logging.debug("Healthchecks UUID not found, aborting ping.")
@@ -1071,7 +1071,7 @@ client.will_set("home/alarm_test/availability", "offline")
 
 for attempt in range(5):
     try:
-        client.connect(config["mqtt"]["host"])
+        client.connect(config.get("mqtt", "host"))
         client.loop_start()
     except:
         logging.error("Unable to connect MQTT, retry... (%d)", attempt)
@@ -1083,8 +1083,8 @@ else:
 
 state = State()
 pushover = Pushover(
-        config["pushover"]["token"],
-        config["pushover"]["user"]
+        config.get("pushover", "token"),
+        config.get("pushover", "user")
         )
 
 arduino = Arduino(logging)
