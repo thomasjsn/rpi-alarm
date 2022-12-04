@@ -9,6 +9,7 @@ import configparser
 import argparse
 import atexit
 import os
+import math
 
 from pushover import Pushover
 import hass
@@ -654,11 +655,12 @@ def buzzer(seconds, current_state):
 
 
 def buzzer_signal(i, x):
-    for _ in range(i):
-        outputs["buzzer"].set(True)
-        time.sleep(x[0])
-        outputs["buzzer"].set(False)
-        time.sleep(x[1])
+    with buzzer_lock:
+        for _ in range(i):
+            outputs["buzzer"].set(True)
+            time.sleep(x[0])
+            outputs["buzzer"].set(False)
+            time.sleep(x[1])
 
 
 def siren(seconds, zone, current_state):
@@ -1062,6 +1064,30 @@ def serial_data():
 
         time.sleep(10)
 
+def door_open_warning():
+    door_closed_time = time.time()
+
+    while True:
+        if not sensors["door1"].is_true:
+            door_closed_time = time.time()
+
+        seconds_open = math.floor(time.time() - door_closed_time)
+
+        interval = 20
+        if seconds_open > 180:
+            interval = 1
+        elif seconds_open > 150:
+            interval = 5
+        elif seconds_open > 120:
+            interval = 10
+        elif seconds_open > 90:
+            interval = 15
+
+        if state.system == "disarmed" and seconds_open > 30 and seconds_open % interval == 1:
+            buzzer_signal(1, [0.05, 0.95])
+        else:
+            time.sleep(1)
+
 
 client = mqtt.Client('alarm-test')
 client.on_connect = on_connect
@@ -1099,6 +1125,7 @@ for timer_key, timer in zone_timers.items():
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
+buzzer_lock = threading.Lock()
 
 home_zones = [v for k, v in zones.items() if v.arm_home]
 logging.info("Zones to arm when home: %s", home_zones)
@@ -1117,6 +1144,8 @@ if __name__ == "__main__":
 
     threading.Thread(target=arduino.get_data, args=()).start()
     threading.Thread(target=serial_data, args=()).start()
+
+    threading.Thread(target=door_open_warning, args=()).start()
 
     while True:
         time.sleep(0.01)
