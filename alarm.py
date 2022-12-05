@@ -109,6 +109,14 @@ class Sensor:
     def is_true(self):
         return self.get()
 
+    def add_attribute(self, attribute, value, topic=None, field=None):
+        if topic is None:
+            topic = self.topic
+        if field is None:
+            field = attribute
+
+        new_attribute = Sensor(topic=topic, field=field, value=value)
+        setattr(self, attribute, new_attribute)
 
 class Entity:
     def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None, icon=None):
@@ -291,52 +299,26 @@ sensors = {
         )
     }
 
-sensors["door1"].battery = Sensor(
-        topic=sensors["door1"].topic,
-        field="battery",
-        value=20
-        )
-sensors["door2"].battery = Sensor(
-        topic=sensors["door2"].topic,
-        field="battery",
-        value=20
-        )
-sensors["door3"].battery = Sensor(
-        topic=sensors["door3"].topic,
-        field="battery",
-        value=20
-        )
-sensors["motion1"].battery = Sensor(
-        topic=sensors["motion1"].topic,
-        field="battery",
-        value=20
-        )
-sensors["motion2"].battery = Sensor(
-        topic=sensors["motion2"].topic,
-        field="battery",
-        value=20
-        )
-sensors["water_leak1"].battery = Sensor(
-        topic=sensors["water_leak1"].topic,
-        field="battery",
-        value=20
-        )
-sensors["panel_tamper"].battery = Sensor(
-        topic=sensors["panel_tamper"].topic,
-        field="battery_low",
-        value=True
-        )
+sensors["door1"].add_attribute("battery", 20)
+sensors["door2"].add_attribute("battery", 20)
+sensors["door3"].add_attribute("battery", 20)
+sensors["motion1"].add_attribute("battery", 20)
+sensors["motion2"].add_attribute("battery", 20)
+sensors["water_leak1"].add_attribute("battery", 20)
+sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
+
+sensors["door1"].add_attribute("linkquality", 50)
+sensors["door2"].add_attribute("linkquality", 50)
+sensors["door3"].add_attribute("linkquality", 50)
+sensors["motion1"].add_attribute("linkquality", 50)
+sensors["motion2"].add_attribute("linkquality", 50)
+sensors["water_leak1"].add_attribute("linkquality", 50)
+sensors["panel_tamper"].add_attribute("linkquality", 50)
 
 #sensors["door1"].status = Sensor(
 #        topic="zwave/Front_door/status",
 #        field="status",
 #        value="Awake"
-#        )
-
-#sensors["door1"].linkquality = Sensor(
-#        topic="zigbee2mqtt/Door front",
-#        field="linkquality",
-#        value=50
 #        )
 
 zones = inputs | sensors
@@ -380,16 +362,16 @@ entities = {
         label="System temperature",
         category="diagnostic"
         ),
-    "system_voltage": Entity(
-        field="voltage",
+    "battery_voltage": Entity(
+        field="battery_voltage",
         component="sensor",
         dev_class="voltage",
         unit="V",
-        label="System voltage",
+        label="Battery voltage",
         category="diagnostic"
         ),
-    "battery": Entity(
-        field="battery",
+    "battery_level": Entity(
+        field="battery_level",
         component="sensor",
         dev_class="battery",
         unit="%",
@@ -544,6 +526,10 @@ class State:
                 with open('config.ini', 'w') as configfile:
                     config.set("system", "state", state)
                     config.write(configfile)
+
+            if state in ["armed_home", "armed_away"]:
+                self.data["triggered"]["zone"] = None
+                self.data["triggered"]["timestamp"] = None
 
     def triggered(self, zone):
         with self._lock:
@@ -803,11 +789,6 @@ def on_connect(client, userdata, flags, rc):
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
-    #client.subscribe("home/alarm_test/set")
-    #client.subscribe("home/alarm_test/config")
-    #client.subscribe("home/alarm_test/action")
-    #client.subscribe("zigbee2mqtt/bridge/state")
-    #client.subscribe("homelab/src_status")
 
     topics = set()
 
@@ -861,17 +842,17 @@ def on_message(client, userdata, msg):
         y = {"value": msg.payload.decode('utf-8')}
         logging.debug("Unable to decode JSON, created object %s", y)
 
-    if msg.topic == "zigbee2mqtt/bridge/state":
+    if msg.topic == "zigbee2mqtt/bridge/state" and "value" in y:
         state.status["zigbee_bridge"] = y["value"] == "online"
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
-    if msg.topic == "homelab/src_status":
+    if msg.topic == "homelab/src_status" and "src2" in y:
         state.status["mains_power_ok"] = y["src2"] == "ok"
         state.data["mains_power_ok"] = state.status["mains_power_ok"]
         return
 
-    if msg.topic == "home/alarm_test/config":
+    if msg.topic == "home/alarm_test/config" and all(k in y for k in ("option","value")):
         cfg_option = y["option"]
         cfg_value = y["value"]
 
@@ -884,7 +865,7 @@ def on_message(client, userdata, msg):
         state.publish()
         return
 
-    if msg.topic == "home/alarm_test/action":
+    if msg.topic == "home/alarm_test/action" and all(k in y for k in ("option","value")):
         act_option = y["option"]
         act_value = y["value"]
 
@@ -904,50 +885,8 @@ def on_message(client, userdata, msg):
 
         return
 
-    #if msg.topic == "home/alarm_test/set-void":
-    #    action = y["action"]
-    #    code = y.get("code")
-
-    #    if code in codes:
-    #        user = codes[code]
-    #        logging.info("Action requested: %s by %s", action, user)
-
-    #        if action == "DISARM":
-    #            threading.Thread(target=disarmed, args=(user,)).start()
-
-    #        if action == "ARM_AWAY":
-    #            threading.Thread(target=arming, args=(user,)).start()
-
-    #        if action == "ARM_HOME":
-    #            threading.Thread(target=armed_home, args=(user,)).start()
-
-    #    else:
-    #        state.data["code_attempts"] += 1
-    #        logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
-
-    #if msg.topic == "zigbee2mqtt/Alarm panel-void":
-    #    action = y["action"]
-    #    code = y.get("action_code")
-
-    #    if code in codes:
-    #        user = codes[code]
-    #        logging.info("Action requested: %s by %s", action, user)
-
-    #        if action == "disarm":
-    #            threading.Thread(target=disarmed, args=(user,)).start()
-
-    #        if action == "arm_all_zones":
-    #            threading.Thread(target=arming, args=(user,)).start()
-
-    #        if action == "arm_day_zones":
-    #            threading.Thread(target=armed_home, args=(user,)).start()
-
-    #    elif code is not None:
-    #        state.data["code_attempts"] += 1
-    #        logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
-
     for key, panel in alarm_panels.items():
-        if msg.topic == panel.topic:
+        if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
             code = y.get(panel.fields["code"])
 
@@ -1045,12 +984,16 @@ def serial_data():
             state.data["temperature"] = data["temperature"]
             state.status["cabinet_temp"] = data["temperature"] < 30
 
-            state.data["voltage"] = data["voltage1"]
-            state.status["system_voltage"] = data["voltage1"] > 12
-
-            state.data["battery"] = battery.level(data["voltage1"])
+            state.data["battery_voltage"] = data["voltage1"]
+            state.data["battery_level"] = battery.level(data["voltage1"])
             state.data["battery_low"] = data["voltage1"] < 12
             state.data["battery_chrg"] = data["voltage1"] > 13
+
+            #state.data["supply_voltage"] = data["voltage2"]
+            #state.data["mains_power_ok"] = data["voltage2"] > 12
+
+            state.status["battery_voltage"] = data["voltage1"] > 12
+            #state.status["mains_power_ok"] = data["voltage2"] > 12
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
