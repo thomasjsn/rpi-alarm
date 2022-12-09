@@ -152,14 +152,23 @@ class ZoneTimer:
 
 
 class AlarmPanel:
-    def __init__(self, topic, fields, actions, label=None):
+    def __init__(self, topic, fields, actions, label=None, set_states={}):
         self.topic = topic
         self.fields = fields
         self.actions = actions
         self.label = label
+        self.set_states = set_states
 
     def __str__(self):
         return self.label
+
+    def set(self, state):
+        if state not in self.set_states:
+            return
+
+        logging.debug("Sending state: %s to alarm panel %s", self.set_states[state], self.label)
+        data = {"arm_mode": {"mode": self.set_states[state]}}
+        client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
 
 
 inputs = {
@@ -325,6 +334,15 @@ zones = inputs | sensors
 
 codes = dict(config.items("codes"))
 
+valid_states = [
+    "disarmed",
+    "armed_home",
+    "armed_away",
+    "triggered",
+    "pending",
+    "arming"
+]
+
 entities = {
     "triggered_zone": Entity(
         field="triggered.zone",
@@ -449,6 +467,20 @@ alarm_panels = {
         fields={"action":"action", "code":"action_code"},
         actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
         label="Climax"
+    ),
+    "develco": AlarmPanel(
+        topic="zigbee2mqtt/0x0015bc0043000dd1",
+        fields={"action":"action", "code":"action_code"},
+        actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
+        label="Develco",
+        set_states = {
+            "disarmed": "disarm",
+            "armed_home": "arm_day_zones",
+            "armed_away": "arm_all_zones",
+            "triggered": "in_alarm",
+            "pending": "entry_delay",
+            "arming": "exit_delay"
+        }
     )
 }
 
@@ -517,6 +549,9 @@ class State:
 
     @system.setter
     def system(self, state):
+        if state not in valid_states:
+            raise ValueError(f"State: {state} is not valid")
+
         with self._lock:
             logging.warning("System state changed to: %s", state)
             self.data["state"] = state
@@ -530,6 +565,10 @@ class State:
             if state in ["armed_home", "armed_away"]:
                 self.data["triggered"]["zone"] = None
                 self.data["triggered"]["timestamp"] = None
+
+            for panel in [v for k, v in alarm_panels.items() if v.set_states]:
+                panel.set(state)
+
 
     def triggered(self, zone):
         with self._lock:
@@ -890,6 +929,9 @@ def on_message(client, userdata, msg):
             action = y[panel.fields["action"]]
             code = y.get(panel.fields["code"])
 
+            #if panel.emergency and action == panel.emergency:
+            #    logging.warning(f"Emergency from panel: {panel.label}")
+
             if code in codes:
                 user = codes[code]
                 logging.info("Panel action, %s: %s by %s", panel, action, user)
@@ -897,11 +939,14 @@ def on_message(client, userdata, msg):
                 if action == panel.actions["disarm"]:
                     threading.Thread(target=disarmed, args=(user,)).start()
 
-                if action == panel.actions["arm_away"]:
+                elif action == panel.actions["arm_away"]:
                     threading.Thread(target=arming, args=(user,)).start()
 
-                if action == panel.actions["arm_home"]:
+                elif action == panel.actions["arm_home"]:
                     threading.Thread(target=armed_home, args=(user,)).start()
+
+                else:
+                    logging.warning(f"Unknown action: {action} from alarm panel: {panel.label}")
 
             elif code is not None:
                 state.data["code_attempts"] += 1
