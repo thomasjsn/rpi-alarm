@@ -316,13 +316,13 @@ sensors["motion2"].add_attribute("battery", 20)
 sensors["water_leak1"].add_attribute("battery", 20)
 sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
 
-sensors["door1"].add_attribute("linkquality", 50)
-sensors["door2"].add_attribute("linkquality", 50)
-sensors["door3"].add_attribute("linkquality", 50)
-sensors["motion1"].add_attribute("linkquality", 50)
-sensors["motion2"].add_attribute("linkquality", 50)
-sensors["water_leak1"].add_attribute("linkquality", 50)
-sensors["panel_tamper"].add_attribute("linkquality", 50)
+sensors["door1"].add_attribute("linkquality", 20)
+sensors["door2"].add_attribute("linkquality", 20)
+sensors["door3"].add_attribute("linkquality", 20)
+sensors["motion1"].add_attribute("linkquality", 20)
+sensors["motion2"].add_attribute("linkquality", 20)
+sensors["water_leak1"].add_attribute("linkquality", 20)
+sensors["panel_tamper"].add_attribute("linkquality", 20)
 
 #sensors["door1"].status = Sensor(
 #        topic="zwave/Front_door/status",
@@ -1071,7 +1071,7 @@ def door_open_warning():
         elif seconds_open > 90:
             interval = 15
 
-        if state.system == "disarmed" and seconds_open > 30 and seconds_open % interval == 1:
+        if state.system == "disarmed" and seconds_open > 30 and seconds_open % interval == 0:
             buzzer_signal(1, [0.05, 0.95])
         else:
             time.sleep(1)
