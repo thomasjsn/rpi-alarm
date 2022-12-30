@@ -2,6 +2,8 @@
 
 > A DIY security alarm system — powered by a Raspberry Pi. Supports hardwired and MQTT sensors.
 
+Project documentation available at: https://blog.cavelab.dev/2022/12/rpi-security-alarm/
+
 ![Security alarm system (RPi and MQTT)](https://i.logistics.cavelab.net/large/2655.jpeg)
 
 ## Author
