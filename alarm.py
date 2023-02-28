@@ -592,6 +592,9 @@ class State:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
                 #buzzer_signal(2, [0.2, 0.2])
 
+            #if value and zone.dev_class == "door" and self.system == "disarmed":
+            #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
+
             tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
             state.data["tamper"] = any(tamper_zones.values())
 
@@ -697,7 +700,7 @@ def siren(seconds, zone, current_state):
         outputs["beacon"].set(True)
 
         if zone == zones["emergency"]:
-            time.sleep(0.1)
+            time.sleep(0.5)
             break
 
         elif "water_leak" in zone.key:
@@ -913,9 +916,10 @@ def on_message(client, userdata, msg):
         if act_option == "siren_test" and act_value:
             #arduino.commands.put([1, True])
             with pending_lock:
-                buzzer_signal(10, [0.1, 0.9])
+                buzzer_signal(3, [0.1, 0.9])
+                buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
-                siren(9, zones["ext_tamper"], "disarmed")
+                siren(3, zones["ext_tamper"], "disarmed")
             #arduino.commands.put([1, False])
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
