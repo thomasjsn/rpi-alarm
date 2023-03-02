@@ -26,7 +26,7 @@ config.read('config.ini')
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
-parser.add_argument('--status', dest='print_status', action='store_true', help="print staus object on publish")
+parser.add_argument('--status', dest='print_status', action='store_true', help="print status object on publish")
 parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
 parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
 parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG","INFO","WARNING"], help="set log level")
@@ -410,6 +410,14 @@ entities = {
         label="Battery charging",
         category="diagnostic"
         ),
+    "auxiliary_voltage": Entity(
+        field="auxiliary_voltage",
+        component="sensor",
+        dev_class="voltage",
+        unit="V",
+        label="Auxiliary voltage",
+        category="diagnostic"
+        ),
     "walk_test": Entity(
         field="config.walk_test",
         component="switch",
@@ -590,7 +598,6 @@ class State:
 
             if value and (state.data["config"]["walk_test"]):
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
-                #buzzer_signal(2, [0.2, 0.2])
 
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
@@ -835,7 +842,7 @@ def on_connect(client, userdata, flags, rc):
     topics = set()
 
     topics.add("zigbee2mqtt/bridge/state")
-    topics.add("homelab/src_status")
+    #topics.add("homelab/src_status")
 
     for option in ["config", "action"]:
         client.subscribe(f"home/alarm_test/{option}")
@@ -889,10 +896,10 @@ def on_message(client, userdata, msg):
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
-    if msg.topic == "homelab/src_status" and "src2" in y:
-        state.status["mains_power_ok"] = y["src2"] == "ok"
-        state.data["mains_power_ok"] = state.status["mains_power_ok"]
-        return
+    #if msg.topic == "homelab/src_status" and "src2" in y:
+    #    state.status["mains_power_ok"] = y["src2"] == "ok"
+    #    state.data["mains_power_ok"] = state.status["mains_power_ok"]
+    #    return
 
     if msg.topic == "home/alarm_test/config" and all(k in y for k in ("option","value")):
         cfg_option = y["option"]
@@ -916,7 +923,7 @@ def on_message(client, userdata, msg):
         if act_option == "siren_test" and act_value:
             #arduino.commands.put([1, True])
             with pending_lock:
-                buzzer_signal(3, [0.1, 0.9])
+                buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
                 siren(3, zones["ext_tamper"], "disarmed")
@@ -1038,16 +1045,15 @@ def serial_data():
             state.data["battery_low"] = data["voltage1"] < 12
             state.data["battery_chrg"] = data["voltage1"] > 13
 
-            #state.data["supply_voltage"] = data["voltage2"]
-            #state.data["mains_power_ok"] = data["voltage2"] > 12
+            state.data["auxiliary_voltage"] = data["voltage2"]
+            state.data["mains_power_ok"] = data["voltage2"] > 12
 
             state.status["battery_voltage"] = data["voltage1"] > 12
-            #state.status["mains_power_ok"] = data["voltage2"] > 12
+            state.status["mains_power_ok"] = data["voltage2"] > 12
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
 
-        #state.status["mains_power_ok"] = data["inputs"][0] is True
         #state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
         #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
