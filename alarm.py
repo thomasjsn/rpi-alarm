@@ -36,12 +36,12 @@ args = parser.parse_args()
 
 
 class Input:
-    def __init__(self, gpio, label=None, dev_class=None, delay=False, arm_home=False):
+    def __init__(self, gpio, label=None, dev_class=None, delay=False, arm_modes=["away"]):
         self.gpio = gpio
         self.label = label or f"Input {self.gpio}"
         self.dev_class = dev_class
         self.delay = delay
-        self.arm_home = arm_home
+        self.arm_modes = arm_modes
 
     def __str__(self):
         return self.label
@@ -85,13 +85,13 @@ class Output:
 
 
 class Sensor:
-    def __init__(self, topic, field, value, label=None, delay=False, arm_home=False, timeout=0, dev_class=None):
+    def __init__(self, topic, field, value, label=None, delay=False, arm_modes=["away"], timeout=0, dev_class=None):
         self.topic = topic
         self.field = field
         self.value = value
         self.label = label
         self.delay = delay
-        self.arm_home = arm_home
+        self.arm_modes = arm_modes
         self.timeout = timeout
         self.timestamp = time.time()
         self.dev_class = dev_class
@@ -176,7 +176,7 @@ inputs = {
         gpio=2,
         label="External tamper",
         dev_class="tamper",
-        arm_home=True
+        arm_modes=["home","away"]
         ),
     "zone01": Input(3, "1st floor hallway", "motion"),
     #"zone02": Input(4),
@@ -231,7 +231,7 @@ sensors = {
         value=False,
         label="Front door",
         delay=True,
-        arm_home=True,
+        arm_modes=["home","away"],
         dev_class="door",
         timeout=3900
         ),
@@ -240,7 +240,7 @@ sensors = {
         field="contact",
         value=False,
         label="Back door",
-        arm_home=True,
+        arm_modes=["home","away"],
         dev_class="door",
         timeout=3900
         ),
@@ -249,7 +249,7 @@ sensors = {
         field="contact",
         value=False,
         label="2nd floor door",
-        arm_home=True,
+        arm_modes=["home","away"],
         dev_class="door",
         timeout=3900
         ),
@@ -282,6 +282,7 @@ sensors = {
         field="water_leak",
         value=True,
         label="Kitchen water leak",
+        arm_modes=["water"],
         timeout=3600,
         dev_class="moisture"
         ),
@@ -290,7 +291,7 @@ sensors = {
         field="tamper",
         value=True,
         label="Panel tamper",
-        arm_home=True,
+        arm_modes=["home","away"],
         timeout=2100,
         dev_class="tamper"
         ),
@@ -298,13 +299,15 @@ sensors = {
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value="panic",
-        label="Panic button"
+        label="Panic button",
+        arm_modes=["direct"]
         ),
     "emergency": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value="emergency",
-        label="Emergency button"
+        label="Emergency button",
+        arm_modes=["direct"]
         )
     }
 
@@ -608,9 +611,11 @@ class State:
             for tamper_key, tamper_status in tamper_zones.items():
                 state.status[f"{tamper_key}_ok"] = not tamper_status
 
-            clear = not any(self.data["zones"].values())
+            #clear = not any(self.data["zones"].values())
+            clear = not any([o.get() for o in away_zones])
             self.data["clear"] = clear
             self.data["arm_not_ready"] = not clear
+            logging.debug("Open away zones: %s", [o.label for o in away_zones if o.get()])
 
             self.publish()
 
@@ -706,11 +711,11 @@ def siren(seconds, zone, current_state):
         outputs["siren1"].set(True)
         outputs["beacon"].set(True)
 
-        if zone == zones["emergency"]:
+        if zone in [zones["emergency"]]:
             time.sleep(0.5)
             break
 
-        elif "water_leak" in zone.key:
+        elif zone in water_zones:
             time.sleep(0.5)
             outputs["siren1"].set(False)
             time.sleep(10)
@@ -813,23 +818,28 @@ def run_led():
 
 
 def check(zone):
-    if zone in [zones["panic"], zones["emergency"], zones["water_leak1"]]:
+    if zone in direct_zones:
         if not triggered_lock.locked():
+            threading.Thread(target=triggered, args=(state.system, zone,)).start()
+
+    if zone in water_zones:
+        if not triggered_lock.locked():
+            arduino.commands.put([3, True]) # Water valve relay
+            arduino.commands.put([4, True]) # Dish washer relay (NC)
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
     if zone in state.blocked:
         return
 
-    if state.system in ["armed_away", "pending"]:
+    if state.system in ["armed_away", "pending"] and zone in away_zones:
         if zone.delay and not pending_lock.locked():
             threading.Thread(target=pending, args=("armed_away", zone,)).start()
         if not zone.delay and not triggered_lock.locked():
             threading.Thread(target=triggered, args=("armed_away", zone,)).start()
 
-    if state.system == "armed_home":
+    if state.system == "armed_home" and zone in home_zones:
         if not triggered_lock.locked():
-            if (zone in home_zones):
-                threading.Thread(target=triggered, args=("armed_home", zone,)).start()
+            threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
 
 # The callback for when the client receives a CONNACK response from the server.
@@ -921,13 +931,13 @@ def on_message(client, userdata, msg):
         logging.info("Action triggered: %s, with value: %s", act_option, act_value)
 
         if act_option == "siren_test" and act_value:
-            #arduino.commands.put([1, True])
+            #arduino.commands.put([1, True]) # Siren block relay
             with pending_lock:
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
                 siren(3, zones["ext_tamper"], "disarmed")
-            #arduino.commands.put([1, False])
+            #arduino.commands.put([1, False]) # Siren block relay
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
             timer = zone_timers[act_value]
@@ -1113,6 +1123,11 @@ pushover = Pushover(
 
 arduino = Arduino(logging)
 
+# Temporary turn off relays related to water alarm here,
+# until a proper reset is implemented.
+for i in range(3, 5):
+    arduino.commands.put([i, False])
+
 for zone_key, zone in zones.items():
     state.data["zones"][zone_key] = None
     zone.key = zone_key
@@ -1125,8 +1140,25 @@ pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
 buzzer_lock = threading.Lock()
 
-home_zones = [v for k, v in zones.items() if v.arm_home]
+#home_zones = [v for k, v in zones.items() if v.arm_home]
+home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
 logging.info("Zones to arm when home: %s", home_zones)
+
+#away_zones = [v for k, v in zones.items()]
+away_zones = [v for k, v in zones.items() if "away" in v.arm_modes]
+logging.info("Zones to arm when away: %s", away_zones)
+
+water_zones = [v for k, v in zones.items() if "water" in v.arm_modes]
+logging.info("Water alarm zones: %s", water_zones)
+
+direct_zones = [v for k, v in zones.items() if "direct" in v.arm_modes]
+logging.info("Direct alarm zones: %s", direct_zones)
+
+passive_zones = [v for k, v in zones.items() if not v.arm_modes]
+logging.info("Passive alarm zones: %s", passive_zones)
+
+if args.silent:
+    logging.warning("Sirens suppressed, silent mode active!")
 
 reboot_required = os.path.isfile("/var/run/reboot-required")
 if reboot_required:

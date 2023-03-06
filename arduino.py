@@ -61,7 +61,4 @@ class Arduino:
             idx, value = self.commands.get()
 
             ser.write(str.encode(f"0,{idx},{value}\n"))
-
-            #if self.data["outputs"][idx] is not value:
-            #    ser.write(str.encode(str(idx)))
-            #    self.logging.info("Arduino output %d set to %s", idx, value)
+            self.logging.info("Arduino output %d set to %s", idx, value)
