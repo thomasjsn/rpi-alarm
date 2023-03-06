@@ -1097,7 +1097,7 @@ def door_open_warning():
             time.sleep(1)
 
 
-client = mqtt.Client('alarm-test')
+client = mqtt.Client(config.get("mqtt", "client_id"))
 client.on_connect = on_connect
 client.on_disconnect = on_disconnect
 client.on_message = on_message
