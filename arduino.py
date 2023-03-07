@@ -51,9 +51,11 @@ class Arduino:
                 }
 
                 self.data = data
-                self.__handle_commands(ser)
 
-                time.sleep(1)
+                start_time = time.time()
+                while (start_time + 1) > time.time():
+                    self.__handle_commands(ser)
+                    time.sleep(0.1)
 
 
     def __handle_commands(self, ser):
