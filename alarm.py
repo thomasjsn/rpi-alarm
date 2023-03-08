@@ -302,11 +302,18 @@ sensors = {
         label="Panic button",
         arm_modes=["direct"]
         ),
-    "emergency": Sensor(
+    "emergency1": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value="emergency",
-        label="Emergency button",
+        label="Emergency button 1",
+        arm_modes=["direct"]
+        ),
+    "emergency2": Sensor(
+        topic="zigbee2mqtt/0x0015bc0043000dd1",
+        field="action",
+        value="emergency",
+        label="Emergency button 2",
         arm_modes=["direct"]
         )
     }
@@ -733,7 +740,7 @@ def siren(seconds, zone, current_state):
         outputs["siren1"].set(True)
         outputs["beacon"].set(True)
 
-        if zone in [zones["emergency"]]:
+        if zone in [zones["emergency1"], zones["emergency2"]]:
             time.sleep(0.5)
             break
 
