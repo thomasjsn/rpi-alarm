@@ -612,6 +612,12 @@ class State:
 
         with self._lock:
             logging.warning("System state changed to: %s", state)
+
+            if state in ["armed_home", "armed_away"] and self.data["state"] == "disarmed":
+                self.data["triggered"]["zone"] = None
+                self.data["triggered"]["timestamp"] = None
+                self.code_attempts = 0
+
             self.data["state"] = state
             self.publish()
 
@@ -619,10 +625,6 @@ class State:
                 with open('config.ini', 'w') as configfile:
                     config.set("system", "state", state)
                     config.write(configfile)
-
-            if state in ["armed_home", "armed_away"]:
-                self.data["triggered"]["zone"] = None
-                self.data["triggered"]["timestamp"] = None
 
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
                 panel.set(state)
@@ -797,7 +799,6 @@ def arming(user):
         if state.data["clear"]:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
-            state.code_attempts = 0
         else:
             logging.error("Unable to arm away, zones not clear")
             state.system = "disarmed"
@@ -845,7 +846,6 @@ def armed_home(user):
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
         buzzer_signal(1, [0.1, 0.1])
-        state.code_attempts = 0
     else:
         logging.error("Unable to arm home, zones not clear")
         state.system = "disarmed"
@@ -1226,8 +1226,7 @@ for i in range(3, 5):
     arduino.commands.put([i, False])
 
 for zone_key, zone in zones.items():
-    if zone.dev_class is not None:
-        state.data["zones"][zone_key] = None
+    state.data["zones"][zone_key] = None
     zone.key = zone_key
 
 for timer_key, timer in zone_timers.items():
