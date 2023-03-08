@@ -442,6 +442,13 @@ entities = {
         icon="battery-clock",
         category="diagnostic"
         ),
+    "water_alarm_test": Entity(
+        field=None,
+        component="button",
+        label="Water alarm test",
+        icon="water-alert",
+        category="diagnostic"
+        ),
     "mains_power": Entity(
         field="mains_power_ok",
         component="binary_sensor",
@@ -718,7 +725,8 @@ def buzzer_signal(i, x):
 
 
 def siren(seconds, zone, current_state):
-    logging.info("Siren loop started (%d seconds)", seconds)
+    logging.info("Siren loop started (%d seconds, %s, %s)",
+                 seconds, zone, current_state)
     start_time = time.time()
 
     while (start_time + seconds) > time.time():
@@ -950,7 +958,8 @@ def on_message(client, userdata, msg):
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
-                siren(3, zones["ext_tamper"], "disarmed")
+                siren_test_zone = [v for k, v in zones.items() if v.dev_class == "tamper"]
+                siren(3, siren_test_zone[0], "disarmed") # use first tamper zone to test
             #arduino.commands.put([1, False]) # Siren block relay
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
@@ -959,6 +968,12 @@ def on_message(client, userdata, msg):
 
         if act_option == "battery_test" and act_value:
             threading.Thread(target=battery_test, args=()).start()
+
+        if act_option == "water_alarm_test" and act_value:
+            with pending_lock:
+                buzzer_signal(7, [0.1, 0.9])
+                buzzer_signal(1, [2.5, 0.5])
+            check(water_zones[0]) # use first water sensor to test
 
         return
 
