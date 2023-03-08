@@ -152,15 +152,20 @@ class ZoneTimer:
 
 
 class AlarmPanel:
-    def __init__(self, topic, fields, actions, label=None, set_states={}):
+    def __init__(self, topic, fields, actions, label=None, set_states={}, timeout=0):
         self.topic = topic
         self.fields = fields
         self.actions = actions
         self.label = label
         self.set_states = set_states
+        self.timeout = timeout
+        self.timestamp = time.time()
 
     def __str__(self):
         return self.label
+
+    def __repr__(self):
+        return f"p:{self.label}"
 
     def set(self, state):
         if state not in self.set_states:
@@ -292,7 +297,6 @@ sensors = {
         value=True,
         label="Panel tamper",
         arm_modes=["home","away"],
-        timeout=2100,
         dev_class="tamper"
         ),
     "panic": Sensor(
@@ -324,7 +328,7 @@ sensors["door3"].add_attribute("battery", 20)
 sensors["motion1"].add_attribute("battery", 20)
 sensors["motion2"].add_attribute("battery", 20)
 sensors["water_leak1"].add_attribute("battery", 20)
-sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
+#sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
 
 sensors["door1"].add_attribute("linkquality", 20)
 sensors["door2"].add_attribute("linkquality", 20)
@@ -332,7 +336,7 @@ sensors["door3"].add_attribute("linkquality", 20)
 sensors["motion1"].add_attribute("linkquality", 20)
 sensors["motion2"].add_attribute("linkquality", 20)
 sensors["water_leak1"].add_attribute("linkquality", 20)
-sensors["panel_tamper"].add_attribute("linkquality", 20)
+#sensors["panel_tamper"].add_attribute("linkquality", 20)
 
 #sensors["door1"].status = Sensor(
 #        topic="zwave/Front_door/status",
@@ -498,7 +502,8 @@ alarm_panels = {
         topic="zigbee2mqtt/Alarm panel",
         fields={"action":"action", "code":"action_code"},
         actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
-        label="Climax"
+        label="Climax",
+        timeout=2100
     ),
     "develco": AlarmPanel(
         topic="zigbee2mqtt/0x0015bc0043000dd1",
@@ -512,7 +517,8 @@ alarm_panels = {
             "triggered": "in_alarm",
             "pending": "entry_delay",
             "arming": "exit_delay"
-        }
+        },
+        timeout=600
     )
 }
 
@@ -924,6 +930,10 @@ def on_disconnect(client, userdata, rc):
 def on_message(client, userdata, msg):
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
+    if msg.payload.decode('utf-8') == "":
+        logging.warning("Received empty payload, discarded")
+        return
+
     try:
         y = json.loads(str(msg.payload.decode('utf-8')))
     except (json.JSONDecodeError):
@@ -985,6 +995,9 @@ def on_message(client, userdata, msg):
         return
 
     for key, panel in alarm_panels.items():
+        if msg.topic == panel.topic:
+            panel.timestamp = time.time()
+
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
             code = y.get(panel.fields["code"])
@@ -1043,12 +1056,12 @@ def on_message(client, userdata, msg):
 
 def status_check():
     while True:
-        for key, sensor in sensors.items():
-            if sensor.timeout == 0:
+        for key, device in (sensors.items() | alarm_panels.items()):
+            if device.timeout == 0:
                 continue
 
-            last_msg_s = round(time.time() - sensor.timestamp)
-            state.status[f"sensor_{key}_alive"] = last_msg_s < sensor.timeout
+            last_msg_s = round(time.time() - device.timestamp)
+            state.status[f"device_{key}_alive"] = last_msg_s < device.timeout
 
         state.status["code_attempts"] = state.data["code_attempts"] < 3
 
