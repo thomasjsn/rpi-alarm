@@ -395,7 +395,7 @@ entities = {
         category="diagnostic"
         ),
     "battery_voltage": Entity(
-        field="battery_voltage",
+        field="battery.voltage",
         component="sensor",
         dev_class="voltage",
         unit="V",
@@ -403,7 +403,7 @@ entities = {
         category="diagnostic"
         ),
     "battery_level": Entity(
-        field="battery_level",
+        field="battery.level",
         component="sensor",
         dev_class="battery",
         unit="%",
@@ -411,21 +411,21 @@ entities = {
         category="diagnostic"
         ),
     "battery_low": Entity(
-        field="battery_low",
+        field="battery.low",
         component="binary_sensor",
         dev_class="battery",
         label="Battery low",
         category="diagnostic"
         ),
     "battery_chrg": Entity(
-        field="battery_chrg",
+        field="battery.charging",
         component="binary_sensor",
         dev_class="battery_charging",
         label="Battery charging",
         category="diagnostic"
         ),
     "battery_test_running": Entity(
-        field="battery_test_running",
+        field="battery.test_running",
         component="binary_sensor",
         dev_class="running",
         label="Battery test",
@@ -568,6 +568,7 @@ class State:
     def __init__(self):
         self.data = {
             "state": config.get("system", "state"),
+            "battery": {},
             "clear": None,
             "fault": None,
             "tamper": None,
@@ -577,7 +578,6 @@ class State:
                 "timestamp": None
             },
             "zone_timers": {},
-            "code_attempts": 0,
             "config": {
                 "walk_test": config.getboolean("config", "walk_test", fallback=False)
             }
@@ -586,6 +586,7 @@ class State:
         self._faults = ["mqtt_connected"]
         self.blocked = set()
         self.status = {}
+        self.code_attempts = 0
 
     def json(self):
         return json.dumps(self.data)
@@ -796,7 +797,7 @@ def arming(user):
         if state.data["clear"]:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
-            state.data["code_attempts"] = 0
+            state.code_attempts = 0
         else:
             logging.error("Unable to arm away, zones not clear")
             state.system = "disarmed"
@@ -844,7 +845,7 @@ def armed_home(user):
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
         buzzer_signal(1, [0.1, 0.1])
-        state.data["code_attempts"] = 0
+        state.code_attempts = 0
     else:
         logging.error("Unable to arm home, zones not clear")
         state.system = "disarmed"
@@ -1039,8 +1040,8 @@ def on_message(client, userdata, msg):
                     logging.warning(f"Unknown action: {action} from alarm panel: {panel.label}")
 
             elif code is not None:
-                state.data["code_attempts"] += 1
-                logging.error("Bad code: %s, attempt: %d", code, state.data["code_attempts"])
+                state.code_attempts += 1
+                logging.error("Bad code: %s, attempt: %d", code, state.code_attempts)
                 buzzer_signal(1, [1, 0])
 
     for key, sensor in sensors.items():
@@ -1080,7 +1081,7 @@ def status_check():
             last_msg_s = round(time.time() - device.timestamp)
             state.status[f"device_{key}_alive"] = last_msg_s < device.timeout
 
-        state.status["code_attempts"] = state.data["code_attempts"] < 3
+        state.status["code_attempts"] = state.code_attempts < 3
 
         for key, timer in zone_timers.items():
             state.zone_timer(key)
@@ -1119,10 +1120,10 @@ def serial_data():
             state.data["temperature"] = data["temperature"]
             state.status["cabinet_temp"] = data["temperature"] < 30
 
-            state.data["battery_voltage"] = data["voltage1"]
-            state.data["battery_level"] = battery.level(data["voltage1"])
-            state.data["battery_low"] = data["voltage1"] < 12
-            state.data["battery_chrg"] = data["voltage1"] > 13
+            state.data["battery"]["voltage"] = data["voltage1"]
+            state.data["battery"]["level"] = battery.level(data["voltage1"])
+            state.data["battery"]["low"] = data["voltage1"] < 12
+            state.data["battery"]["charging"] = data["voltage1"] > 13
 
             state.data["auxiliary_voltage"] = data["voltage2"]
             state.data["mains_power_ok"] = data["voltage2"] > 12
@@ -1137,7 +1138,7 @@ def serial_data():
         #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
-        state.data["battery_test_running"] = battery_test_thread.is_alive()
+        state.data["battery"]["test_running"] = battery_test_thread.is_alive()
 
         time.sleep(1)
 
@@ -1225,7 +1226,8 @@ for i in range(3, 5):
     arduino.commands.put([i, False])
 
 for zone_key, zone in zones.items():
-    state.data["zones"][zone_key] = None
+    if zone.dev_class is not None:
+        state.data["zones"][zone_key] = None
     zone.key = zone_key
 
 for timer_key, timer in zone_timers.items():
