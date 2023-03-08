@@ -424,6 +424,13 @@ entities = {
         label="Battery charging",
         category="diagnostic"
         ),
+    "battery_test_running": Entity(
+        field="battery_test_running",
+        component="binary_sensor",
+        dev_class="running",
+        label="Battery test",
+        category="diagnostic"
+        ),
     "auxiliary_voltage": Entity(
         field="auxiliary_voltage",
         component="sensor",
@@ -991,7 +998,10 @@ def on_message(client, userdata, msg):
             timer.cancel()
 
         if act_option == "battery_test" and act_value:
-            threading.Thread(target=battery_test, args=()).start()
+            if not battery_test_thread.is_alive():
+                battery_test_thread.start()
+            else:
+                logging.error("Battery test already running!")
 
         if act_option == "water_alarm_test" and act_value:
             with pending_lock:
@@ -1127,6 +1137,8 @@ def serial_data():
         #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
+        state.data["battery_test_running"] = battery_test_thread.is_alive()
+
         time.sleep(1)
 
         if round(time.time(), 0) % 10 == 0:
@@ -1223,6 +1235,8 @@ for timer_key, timer in zone_timers.items():
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
 buzzer_lock = threading.Lock()
+
+battery_test_thread = threading.Thread(target=battery_test, args=())
 
 #home_zones = [v for k, v in zones.items() if v.arm_home]
 home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
