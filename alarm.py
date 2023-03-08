@@ -433,7 +433,14 @@ entities = {
         component="button",
         label="Siren test",
         icon="bullhorn",
-        category="config"
+        category="diagnostic"
+        ),
+    "battery_test": Entity(
+        field=None,
+        component="button",
+        label="Battery test",
+        icon="battery-clock",
+        category="diagnostic"
         ),
     "mains_power": Entity(
         field="mains_power_ok",
@@ -497,6 +504,11 @@ alarm_panels = {
 
 format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
+
+battery_log = logging.getLogger("battery")
+battery_log_handler = logging.FileHandler('battery.log')
+battery_log_handler.setFormatter(logging.Formatter(format))
+battery_log.addHandler(battery_log_handler)
 
 if args.log_level:
     logging.getLogger().setLevel(args.log_level)
@@ -596,7 +608,7 @@ class State:
 
             for timer_key, timer in zone_timers.items():
                 if zone_key in timer.zones:
-                    logging.debug("Zone: %s found in timer %s", zone, timer_key)
+                    #logging.debug("Zone: %s found in timer %s", zone, timer_key)
                     self.zone_timer(timer_key)
 
             if value and (state.data["config"]["walk_test"]):
@@ -605,7 +617,9 @@ class State:
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
-            tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
+            #tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
+            tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == 'tamper'}
+
             state.data["tamper"] = any(tamper_zones.values())
 
             for tamper_key, tamper_status in tamper_zones.items():
@@ -615,7 +629,7 @@ class State:
             clear = not any([o.get() for o in away_zones])
             self.data["clear"] = clear
             self.data["arm_not_ready"] = not clear
-            logging.debug("Open away zones: %s", [o.label for o in away_zones if o.get()])
+            #logging.debug("Open away zones: %s", [o.label for o in away_zones if o.get()])
 
             self.publish()
 
@@ -844,7 +858,7 @@ def check(zone):
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
-    logging.info("Connected with result code %s", rc)
+    logging.info("Connected to MQTT broker with result code %s", rc)
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
@@ -942,6 +956,9 @@ def on_message(client, userdata, msg):
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
             timer = zone_timers[act_value]
             timer.cancel()
+
+        if act_option == "battery_test" and act_value:
+            threading.Thread(target=battery_test, args=()).start()
 
         return
 
@@ -1068,9 +1085,10 @@ def serial_data():
         #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
-        state.publish()
+        time.sleep(1)
 
-        time.sleep(10)
+        if round(time.time(), 0) % 10 == 0:
+            state.publish()
 
 def door_open_warning():
     door_closed_time = time.time()
@@ -1095,6 +1113,20 @@ def door_open_warning():
             buzzer_signal(1, [0.05, 0.95])
         else:
             time.sleep(1)
+
+def battery_test():
+    start_time = time.time()
+    battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
+    arduino.commands.put([2, True]) # Disable charger
+
+    #while arduino.data["voltage1"] > 12:
+    for _ in range(10):
+        time.sleep(1)
+
+    test_time = round(time.time() - start_time, 0)
+    battery_log.info("Battery test completed at %s V, took: %s",
+                     arduino.data["voltage1"], datetime.timedelta(seconds=test_time))
+    arduino.commands.put([2, False]) # Re-enable charger
 
 
 client = mqtt.Client(config.get("mqtt", "client_id"))
