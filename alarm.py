@@ -473,6 +473,13 @@ entities = {
         dev_class="connectivity",
         label="Zigbee bridge",
         category="diagnostic"
+        ),
+    "reboot_required": Entity(
+        field="reboot_required",
+        component="binary_sensor",
+        dev_class="update",
+        label="Reboot required",
+        category="diagnostic"
         )
     }
 
@@ -1163,6 +1170,16 @@ def battery_test():
                      arduino.data["voltage1"], datetime.timedelta(seconds=test_time))
     arduino.commands.put([2, False]) # Re-enable charger
 
+def reboot_required():
+    while True:
+        reboot_required = os.path.isfile("/var/run/reboot-required")
+        state.data["reboot_required"] = reboot_required
+
+        if reboot_required:
+            logging.warning("Reboot required!")
+
+        time.sleep(60*60)
+
 
 client = mqtt.Client(config.get("mqtt", "client_id"))
 client.on_connect = on_connect
@@ -1227,10 +1244,6 @@ logging.info("Passive alarm zones: %s", passive_zones)
 if args.silent:
     logging.warning("Sirens suppressed, silent mode active!")
 
-reboot_required = os.path.isfile("/var/run/reboot-required")
-if reboot_required:
-    logging.warning("Reboot required!")
-
 if __name__ == "__main__":
     run_led = threading.Thread(target=run_led, args=())
     run_led.start()
@@ -1243,6 +1256,8 @@ if __name__ == "__main__":
     threading.Thread(target=serial_data, args=()).start()
 
     threading.Thread(target=door_open_warning, args=()).start()
+
+    threading.Thread(target=reboot_required, args=()).start()
 
     while True:
         time.sleep(0.01)
