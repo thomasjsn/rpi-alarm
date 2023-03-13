@@ -183,7 +183,12 @@ inputs = {
         dev_class="tamper",
         arm_modes=["home","away"]
         ),
-    "zone01": Input(3, "1st floor hallway", "motion"),
+    "zone01": Input(
+        gpio=3,
+        label="1st floor hallway",
+        dev_class="motion",
+        arm_modes=[]
+        ),
     #"zone02": Input(4),
     #"zone03": Input(17),
     #"zone04": Input(27),
@@ -192,7 +197,12 @@ inputs = {
     #"zone07": Input(18),
     #"zone08": Input(22),
     #"zone09": Input(23),
-    #"1st_floor_tamper": Input(24, "1st floor tamper", "tamper"),
+    #"1st_floor_tamper": Input(
+    #    gpio=24,
+    #    label="1st floor tamper",
+    #    dev_class="tamper",
+    #    arm_modes=[]
+    #    ),
     #"zone11": None,
     #"zone12": None,
     }
@@ -587,6 +597,7 @@ class State:
         self.blocked = set()
         self.status = {}
         self.code_attempts = 0
+        self.zones_open = set()
 
     def json(self):
         return json.dumps(self.data)
@@ -617,6 +628,11 @@ class State:
                 self.data["triggered"]["zone"] = None
                 self.data["triggered"]["timestamp"] = None
                 self.code_attempts = 0
+
+            if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
+                if len(self.zones_open) > 0:
+                    self.zones_open.clear()
+                    logging.info("Clearing list of open zones")
 
             self.data["state"] = state
             self.publish()
@@ -758,6 +774,7 @@ def siren(seconds, zone, current_state):
     logging.info("Siren loop started (%d seconds, %s, %s)",
                  seconds, zone, current_state)
     start_time = time.time()
+    #zones_open = len(state.zones_open)
 
     while (start_time + seconds) > time.time():
         outputs["siren1"].set(True)
@@ -773,7 +790,7 @@ def siren(seconds, zone, current_state):
             time.sleep(10)
 
         else:
-            if (time.time()-start_time) > (seconds/3):
+            if (time.time()-start_time) > (seconds/3) and len(state.zones_open) > 1:
                 outputs["siren2"].set(True)
             time.sleep(1)
 
@@ -782,6 +799,12 @@ def siren(seconds, zone, current_state):
             outputs["siren2"].set(False)
             logging.info("Siren loop aborted")
             return False
+
+        #if len(state.zones_open) > zones_open:
+        #    logging.warning("Open triggered zones increased, extending trigger time")
+        #    logging.debug("Trigger time increased by: %d seconds", time.time() - start_time)
+        #    start_time = time.time()
+        #    zones_open = len(state.zones_open)
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
@@ -794,6 +817,9 @@ def siren(seconds, zone, current_state):
 def arming(user):
     state.system = "arming"
     arming_time = config.getint("times", "arming")
+
+    if args.silent:
+        arming_time = 10
 
     if buzzer(arming_time, "arming") is True:
         if state.data["clear"]:
@@ -822,7 +848,7 @@ def triggered(current_state, zone):
 
     with triggered_lock:
         state.triggered(zone)
-        logging.info("Triggered because of zone: %s", zone)
+        logging.warning("Triggered because of zone: %s", zone)
         pushover.push(f"Triggered, zone: {zone}", 2)
 
         state.blocked.add(zone)
@@ -891,6 +917,16 @@ def check(zone):
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
+    if state.system in ["armed_away", "pending", "triggered"] and zone in away_zones:
+        zones_open = len(state.zones_open)
+        state.zones_open.add(zone)
+
+        if len(state.zones_open) > zones_open:
+            logging.info("Added zone to list of open zones: %s", zone)
+            if len(state.zones_open) > 1 and state.system == "triggered":
+                zones_open_str = ", ".join([o.label for o in state.zones_open])
+                pushover.push(f"Multiple triggered zones: {zones_open_str}", 1)
+
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -935,7 +971,7 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_disconnect(client, userdata, rc):
-    logging.info("Disconnecting reason %s", rc)
+    logging.warning("Disconnecting reason %s", rc)
     client.connected_flag = False
     state.status["mqtt_connected"] = False
     client.disconnect_flag = True
@@ -1286,6 +1322,6 @@ if __name__ == "__main__":
         if (not triggered_lock.locked() and
                 (outputs["siren1"].is_true or outputs["siren2"].is_true)):
 
-                logging.fatal("Siren(s) on outside lock!")
+                logging.critical("Siren(s) on outside lock!")
                 wrapping_up()
                 os._exit(os.EX_SOFTWARE)
