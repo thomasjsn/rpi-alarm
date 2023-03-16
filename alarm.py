@@ -579,7 +579,6 @@ class State:
         self.data = {
             "state": config.get("system", "state"),
             "battery": {},
-            "clear": None,
             "fault": None,
             "tamper": None,
             "zones": {},
@@ -678,9 +677,7 @@ class State:
             for tamper_key, tamper_status in tamper_zones.items():
                 state.status[f"{tamper_key}_ok"] = not tamper_status
 
-            #clear = not any(self.data["zones"].values())
             clear = not any([o.get() for o in away_zones])
-            self.data["clear"] = clear
             self.data["arm_not_ready"] = not clear
             #logging.debug("Open away zones: %s", [o.label for o in away_zones if o.get()])
 
@@ -822,13 +819,16 @@ def arming(user):
         arming_time = 10
 
     if buzzer(arming_time, "arming") is True:
-        if state.data["clear"]:
+        active_away_zones = [o.label for o in away_zones if o.get()]
+
+        if not active_away_zones:
             state.system = "armed_away"
             pushover.push(f"System armed away, by {user}")
         else:
-            logging.error("Unable to arm away, zones not clear")
+            logging.error("Arm away failed, not clear: %s", active_away_zones)
             state.system = "disarmed"
-            pushover.push("Arm away failed, not clear", 1, {"sound": "siren"})
+            active_away_zones_str = ", ".join(active_away_zones)
+            pushover.push(f"Arm away failed, not clear: {active_away_zones_str}", 1, {"sound": "siren"})
             buzzer_signal(1, [1, 0])
 
 
@@ -865,17 +865,17 @@ def disarmed(user):
 
 
 def armed_home(user):
-    active_home_zones = [o.get() for o in home_zones]
-    logging.debug("Home zone values: %s", active_home_zones)
+    active_home_zones = [o.label for o in home_zones if o.get()]
 
-    if not any(active_home_zones):
+    if not active_home_zones:
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
         buzzer_signal(1, [0.1, 0.1])
     else:
-        logging.error("Unable to arm home, zones not clear")
+        logging.error("Arm home failed, not clear: %s", active_home_zones)
         state.system = "disarmed"
-        pushover.push("Arm home failed, not clear", 1, {"sound": "siren"})
+        active_home_zones_str = ", ".join(active_home_zones)
+        pushover.push(f"Arm home failed, not clear: {active_home_zones_str}", 1, {"sound": "siren"})
         buzzer_signal(1, [1, 0])
 
 
@@ -1056,6 +1056,10 @@ def on_message(client, userdata, msg):
             action = y[panel.fields["action"]]
             code = y.get(panel.fields["code"])
 
+            if msg.retain == 1:
+                logging.warning("Discarding action: %s, in retained message from alarm panel: %s", action, panel)
+                continue
+
             #if panel.emergency and action == panel.emergency:
             #    logging.warning(f"Emergency from panel: {panel.label}")
 
@@ -1073,7 +1077,7 @@ def on_message(client, userdata, msg):
                     threading.Thread(target=armed_home, args=(user,)).start()
 
                 else:
-                    logging.warning(f"Unknown action: {action} from alarm panel: {panel.label}")
+                    logging.warning("Unknown action: %s, from alarm panel: %s", action, panel)
 
             elif code is not None:
                 state.code_attempts += 1
@@ -1082,12 +1086,16 @@ def on_message(client, userdata, msg):
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic and sensor.field in y:
+            sensor.timestamp = time.time()
+
             state.zone(key, y[sensor.field] == sensor.value)
 
             if y[sensor.field] == sensor.value:
-                check(sensor)
+                if msg.retain == 1 and any(mode in ["direct"] for mode in sensor.arm_modes):
+                    logging.warning("Discarding active sensor: %s, in retained messags", sensor)
+                    continue
 
-            sensor.timestamp = time.time()
+                check(sensor)
 
         if hasattr(sensor, 'battery'):
             if msg.topic == sensor.battery.topic and sensor.battery.field in y:
