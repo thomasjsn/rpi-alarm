@@ -456,6 +456,13 @@ entities = {
         icon="walk",
         category="config"
         ),
+    "door_open_warning": Entity(
+        field="config.door_open_warning",
+        component="switch",
+        label="Door open warning",
+        icon="door-open",
+        category="config"
+        ),
     "siren_test": Entity(
         field=None,
         component="button",
@@ -588,7 +595,8 @@ class State:
             },
             "zone_timers": {},
             "config": {
-                "walk_test": config.getboolean("config", "walk_test", fallback=False)
+                "walk_test": config.getboolean("config", "walk_test", fallback=False),
+                "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True)
             }
         }
         self._lock = threading.Lock()
@@ -1193,7 +1201,11 @@ def door_open_warning():
     door_closed_time = time.time()
 
     while True:
-        if not sensors["door1"].is_true:
+        # De Morgan's laws:
+        #   not (A or B) = (not A) and (not B)
+        #   not (A and B) = (not A) or (not B)
+        # If door is closed or warning is disabled
+        if not (sensors["door1"].is_true and state.data["config"]["door_open_warning"]):
             door_closed_time = time.time()
 
         seconds_open = math.floor(time.time() - door_closed_time)
