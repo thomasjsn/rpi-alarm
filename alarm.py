@@ -10,6 +10,7 @@ import argparse
 import atexit
 import os
 import math
+from itertools import chain
 
 from pushover import Pushover
 import hass
@@ -25,6 +26,7 @@ config.read('config.ini')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
+parser.add_argument('--siren-block', dest='siren_block_relay', action='store_true', help="activate siren block relay")
 parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
 parser.add_argument('--status', dest='print_status', action='store_true', help="print status object on publish")
 parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
@@ -329,6 +331,13 @@ sensors = {
         value="emergency",
         label="Emergency button 2",
         arm_modes=["direct"]
+        ),
+    "fire_test": Sensor(
+        topic="home/alarm_test/test/fire",
+        field="value",
+        value="on",
+        label="Fire test",
+        arm_modes=["fire"]
         )
     }
 
@@ -572,7 +581,6 @@ for output in outputs.values():
     GPIO.setup(output.gpio, GPIO.OUT)
     output.set(False)
 
-
 def wrapping_up():
     for output in outputs.values():
         output.set(False)
@@ -636,10 +644,11 @@ class State:
                 self.data["triggered"]["timestamp"] = None
                 self.code_attempts = 0
 
-            if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
+            #if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
+            if state in ["disarmed", "armed_home", "armed_away"]:
                 if len(self.zones_open) > 0:
+                    logging.info("Clearing open zones: %s", self.zones_open)
                     self.zones_open.clear()
-                    logging.info("Clearing list of open zones")
 
             self.data["state"] = state
             self.publish()
@@ -782,19 +791,31 @@ def siren(seconds, zone, current_state):
     #zones_open = len(state.zones_open)
 
     while (start_time + seconds) > time.time():
-        outputs["siren1"].set(True)
-        outputs["beacon"].set(True)
+        # ANSI S3.41-1990; Temporal Three or T3 pattern
+        # Indoor siren uses about 0.2 seconds to reach
+        if zone in fire_zones:
+            for _ in range(3):
+                outputs["siren1"].set(True)
+                time.sleep(0.7)
+                outputs["siren1"].set(False)
+                time.sleep(0.3)
+            time.sleep(1)
 
-        if zone in [zones["emergency1"], zones["emergency2"]]:
+        elif zone in [zones["emergency1"], zones["emergency2"]]:
+            outputs["siren1"].set(True)
             time.sleep(0.5)
             break
 
         elif zone in water_zones:
+            outputs["siren1"].set(True)
             time.sleep(0.5)
             outputs["siren1"].set(False)
             time.sleep(10)
 
         else:
+            outputs["siren1"].set(True)
+            outputs["beacon"].set(True)
+
             if (time.time()-start_time) > (seconds/3) and len(state.zones_open) > 1:
                 outputs["siren2"].set(True)
             time.sleep(1)
@@ -802,7 +823,9 @@ def siren(seconds, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
+            outputs["beacon"].set(False)
             logging.info("Siren loop aborted")
+
             return False
 
         #if len(state.zones_open) > zones_open:
@@ -814,8 +837,8 @@ def siren(seconds, zone, current_state):
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
     outputs["beacon"].set(False)
-
     logging.info("Siren loop completed")
+
     return True
 
 
@@ -823,7 +846,7 @@ def arming(user):
     state.system = "arming"
     arming_time = config.getint("times", "arming")
 
-    if args.silent:
+    if args.silent or args.siren_block_relay:
         arming_time = 10
 
     if buzzer(arming_time, "arming") is True:
@@ -843,6 +866,9 @@ def arming(user):
 def pending(current_state, zone):
     delay_time = config.getint("times", "delay")
 
+    if args.silent or args.siren_block_relay:
+        delay_time = 10
+
     with pending_lock:
         state.system = "pending"
         logging.info("Pending because of zone: %s", zone)
@@ -853,6 +879,9 @@ def pending(current_state, zone):
 
 def triggered(current_state, zone):
     trigger_time = config.getint("times", "trigger")
+
+    if args.silent or args.siren_block_relay:
+        trigger_time = 30
 
     with triggered_lock:
         state.triggered(zone)
@@ -902,7 +931,7 @@ def run_led():
 
 
 def check(zone):
-    if zone in direct_zones:
+    if zone in chain(direct_zones, fire_zones):
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
@@ -1034,8 +1063,13 @@ def on_message(client, userdata, msg):
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
-                siren_test_zone = [v for k, v in zones.items() if v.dev_class == "tamper"]
-                siren(3, siren_test_zone[0], "disarmed") # use first tamper zone to test
+                siren_test_zones = [v for k, v in zones.items() if v.dev_class == "tamper"]
+                if siren_test_zones and len(zones) > 2:
+                    state.zones_open.update(list(zones.values())[:2])
+                    siren(3, siren_test_zones[0], "disarmed") # use first tamper zone to test
+                    #state.zones_open.clear()
+                else:
+                    logging.error("Not enough zones defined, unable to run siren test!")
             #arduino.commands.put([1, False]) # Siren block relay
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
@@ -1052,7 +1086,10 @@ def on_message(client, userdata, msg):
             with pending_lock:
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
-            check(water_zones[0]) # use first water sensor to test
+            if water_zones:
+                check(water_zones[0]) # use first water sensor to test
+            else:
+                logging.error("No water zones defined, unable to run water alarm test!")
 
         return
 
@@ -1099,7 +1136,7 @@ def on_message(client, userdata, msg):
             state.zone(key, y[sensor.field] == sensor.value)
 
             if y[sensor.field] == sensor.value:
-                if msg.retain == 1 and any(mode in ["direct"] for mode in sensor.arm_modes):
+                if msg.retain == 1 and sensor in chain(direct_zones, fire_zones):
                     logging.warning("Discarding active sensor: %s, in retained messags", sensor)
                     continue
 
@@ -1281,6 +1318,13 @@ arduino = Arduino(logging)
 for i in range(3, 5):
     arduino.commands.put([i, False])
 
+if args.siren_block_relay:
+    arduino.commands.put([1, True]) # Siren block relay
+    logging.warning("Sirens blocked, siren block active!")
+
+if args.silent:
+    logging.warning("Sirens suppressed, silent mode active!")
+
 for zone_key, zone in zones.items():
     state.data["zones"][zone_key] = None
     zone.key = zone_key
@@ -1309,11 +1353,11 @@ logging.info("Water alarm zones: %s", water_zones)
 direct_zones = [v for k, v in zones.items() if "direct" in v.arm_modes]
 logging.info("Direct alarm zones: %s", direct_zones)
 
+fire_zones = [v for k, v in zones.items() if "fire" in v.arm_modes]
+logging.info("Fire alarm zones: %s", fire_zones)
+
 passive_zones = [v for k, v in zones.items() if not v.arm_modes]
 logging.info("Passive alarm zones: %s", passive_zones)
-
-if args.silent:
-    logging.warning("Sirens suppressed, silent mode active!")
 
 if __name__ == "__main__":
     run_led = threading.Thread(target=run_led, args=())
