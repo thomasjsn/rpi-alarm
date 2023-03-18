@@ -61,6 +61,7 @@ class Arduino:
     def __handle_commands(self, ser):
         while not self.commands.empty():
             idx, value = self.commands.get()
+            value_int = int(value == True)
 
-            ser.write(str.encode(f"0,{idx},{value}\n"))
+            ser.write(str.encode(f"o,{idx},{value_int}\n"))
             self.logging.info("Arduino output %d set to %s", idx, value)
