@@ -187,7 +187,7 @@ inputs = {
         ),
     "zone01": Input(
         gpio=3,
-        label="1st floor hallway",
+        label="1st floor hallway motion",
         dev_class="motion",
         arm_modes=[]
         ),
@@ -274,7 +274,7 @@ sensors = {
         topic="zigbee2mqtt/Motion kitchen",
         field="occupancy",
         value=True,
-        label="Kitchen",
+        label="Kitchen motion",
         timeout=3900,
         dev_class="motion"
         ),
@@ -282,7 +282,7 @@ sensors = {
         topic="zigbee2mqtt/Motion 2nd floor",
         field="occupancy",
         value=True,
-        label="2nd floor",
+        label="2nd floor hallway motion",
         timeout=3900,
         dev_class="motion"
         ),
@@ -290,7 +290,7 @@ sensors = {
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
         field="value",
         value="on",
-        label="Entrance",
+        label="Entrance motion",
         delay=True,
         dev_class="motion"
         ),
@@ -298,7 +298,7 @@ sensors = {
         topic="zigbee2mqtt/Water leak kitchen",
         field="water_leak",
         value=True,
-        label="Kitchen water leak",
+        label="Kitchen dishwasher leak",
         arm_modes=["water"],
         timeout=3600,
         dev_class="moisture"
@@ -377,10 +377,11 @@ valid_states = [
 ]
 
 entities = {
-    "triggered_zone": Entity(
-        field="triggered.zone",
+    "triggered": Entity(
+        field="triggered",
         component="sensor",
-        label="Triggered zone",
+        dev_class="enum",
+        label="Triggered alarm",
         icon="alarm-bell",
         category="diagnostic"
         ),
@@ -596,11 +597,8 @@ class State:
             "battery": {},
             "fault": None,
             "tamper": None,
+            "triggered": None,
             "zones": {},
-            "triggered": {
-                "zone": None,
-                "timestamp": None
-            },
             "zone_timers": {},
             "config": {
                 "walk_test": config.getboolean("config", "walk_test", fallback=False),
@@ -639,13 +637,11 @@ class State:
         with self._lock:
             logging.warning("System state changed to: %s", state)
 
-            if state in ["armed_home", "armed_away"] and self.data["state"] == "disarmed":
-                self.data["triggered"]["zone"] = None
-                self.data["triggered"]["timestamp"] = None
-                self.code_attempts = 0
-
             #if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
             if state in ["disarmed", "armed_home", "armed_away"]:
+                self.code_attempts = 0
+                self.data["triggered"] = None
+
                 if len(self.zones_open) > 0:
                     logging.info("Clearing open zones: %s", self.zones_open)
                     self.zones_open.clear()
@@ -661,12 +657,6 @@ class State:
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
                 panel.set(state)
 
-
-    def triggered(self, zone):
-        with self._lock:
-            self.data["triggered"]["zone"] = str(zone)
-            self.data["triggered"]["timestamp"] = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        self.system = "triggered"
 
     def zone(self, zone_key, value):
         zone = zones[zone_key]
@@ -804,6 +794,8 @@ def siren(seconds, zone, current_state):
         elif zone in [zones["emergency1"], zones["emergency2"]]:
             outputs["siren1"].set(True)
             time.sleep(0.5)
+            outputs["siren1"].set(False)
+            time.sleep(10)
             break
 
         elif zone in water_zones:
@@ -884,7 +876,16 @@ def triggered(current_state, zone):
         trigger_time = 30
 
     with triggered_lock:
-        state.triggered(zone)
+        if zone in fire_zones:
+            state.data["triggered"] = "Fire"
+        elif zone in water_zones:
+            state.data["triggered"] = "Water leak"
+        elif zone in direct_zones:
+            state.data["triggered"] = "Emergency"
+        else:
+            state.data["triggered"] = "Intrusion"
+
+        state.system = "triggered"
         logging.warning("Triggered because of zone: %s", zone)
         pushover.push(f"Triggered, zone: {zone}", 2)
 
@@ -931,7 +932,7 @@ def run_led():
 
 
 def check(zone):
-    if zone in chain(direct_zones, fire_zones):
+    if zone in fire_zones or (state.system != "armed_away" and zone in direct_zones):
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
