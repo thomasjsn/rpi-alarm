@@ -676,9 +676,7 @@ class State:
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
-            #tamper_zones = {k: v for k, v in self.data["zones"].items() if k.endswith('tamper')}
             tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == 'tamper'}
-
             state.data["tamper"] = any(tamper_zones.values())
 
             for tamper_key, tamper_status in tamper_zones.items():
@@ -686,7 +684,6 @@ class State:
 
             clear = not any([o.get() for o in away_zones])
             self.data["arm_not_ready"] = not clear
-            #logging.debug("Open away zones: %s", [o.label for o in away_zones if o.get()])
 
             self.publish()
 
@@ -974,9 +971,7 @@ def on_connect(client, userdata, flags, rc):
     # reconnect then subscriptions will be renewed.
 
     topics = set()
-
     topics.add("zigbee2mqtt/bridge/state")
-    #topics.add("homelab/src_status")
 
     for option in ["config", "action"]:
         client.subscribe(f"home/alarm_test/{option}")
@@ -1033,11 +1028,6 @@ def on_message(client, userdata, msg):
         state.status["zigbee_bridge"] = y["value"] == "online"
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
-
-    #if msg.topic == "homelab/src_status" and "src2" in y:
-    #    state.status["mains_power_ok"] = y["src2"] == "ok"
-    #    state.data["mains_power_ok"] = state.status["mains_power_ok"]
-    #    return
 
     if msg.topic == "home/alarm_test/config" and all(k in y for k in ("option","value")):
         cfg_option = y["option"]
@@ -1340,11 +1330,9 @@ buzzer_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=())
 
-#home_zones = [v for k, v in zones.items() if v.arm_home]
 home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
 logging.info("Zones to arm when home: %s", home_zones)
 
-#away_zones = [v for k, v in zones.items()]
 away_zones = [v for k, v in zones.items() if "away" in v.arm_modes]
 logging.info("Zones to arm when away: %s", away_zones)
 
