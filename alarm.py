@@ -71,7 +71,7 @@ class Output:
     def set(self, state):
         if self.get() != state:
             if self in [outputs["siren1"], outputs["siren2"]] and args.silent and state:
-                logging.debug("Supressing %s, because silent", self)
+                logging.debug("Suppressing %s, because silent", self)
                 return
 
             GPIO.output(self.gpio, state)
@@ -188,8 +188,7 @@ inputs = {
     "zone01": Input(
         gpio=3,
         label="1st floor hallway motion",
-        dev_class="motion",
-        arm_modes=[]
+        dev_class="motion"
         ),
     #"zone02": Input(4),
     #"zone03": Input(17),
@@ -936,7 +935,7 @@ def check(zone):
     if zone in water_zones:
         if not triggered_lock.locked():
             arduino.commands.put([3, True]) # Water valve relay
-            arduino.commands.put([4, True]) # Dish washer relay (NC)
+            arduino.commands.put([4, True]) # Dishwasher relay (NC)
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
     if zone in state.blocked:
@@ -1020,7 +1019,7 @@ def on_message(client, userdata, msg):
 
     try:
         y = json.loads(str(msg.payload.decode('utf-8')))
-    except (json.JSONDecodeError):
+    except json.JSONDecodeError:
         y = {"value": msg.payload.decode('utf-8')}
         logging.debug("Unable to decode JSON, created object %s", y)
 
@@ -1128,7 +1127,7 @@ def on_message(client, userdata, msg):
 
             if y[sensor.field] == sensor.value:
                 if msg.retain == 1 and sensor in chain(direct_zones, fire_zones):
-                    logging.warning("Discarding active sensor: %s, in retained messags", sensor)
+                    logging.warning("Discarding active sensor: %s, in retained message", sensor)
                     continue
 
                 check(sensor)
@@ -1292,7 +1291,7 @@ for attempt in range(5):
         logging.error("Unable to connect MQTT, retry... (%d)", attempt)
         time.sleep(attempt*3)
     else:
-        break;
+        break
 else:
     logging.error("Unable to connect MQTT, giving up!")
 
