@@ -293,6 +293,14 @@ sensors = {
         delay=True,
         dev_class="motion"
         ),
+    "g_motion1": Sensor(
+        topic="hass2mqtt/binary_sensor/garasjen_motion/state",
+        field="value",
+        value="on",
+        label="Garage motion",
+        arm_modes=[],
+        dev_class="motion"
+        ),
     "water_leak1": Sensor(
         topic="zigbee2mqtt/Water leak kitchen",
         field="water_leak",
@@ -610,6 +618,7 @@ class State:
         self.status = {}
         self.code_attempts = 0
         self.zones_open = set()
+        self.garage_notify = time.time()
 
     def json(self):
         return json.dumps(self.data)
@@ -671,6 +680,10 @@ class State:
 
             if value and (state.data["config"]["walk_test"]):
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
+
+            if value and self.system in ["triggered", "armed_home", "armed_away"]:
+                if zone == zones["g_motion1"] and (time.time() - self.garage_notify > 60):
+                    pushover.push(f"Notify zone is open: {zone}", 1)
 
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
