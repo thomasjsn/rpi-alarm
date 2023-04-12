@@ -682,8 +682,9 @@ class State:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
             if value and self.system in ["triggered", "armed_home", "armed_away"]:
-                if zone == zones["g_motion1"] and (time.time() - self.garage_notify > 60):
+                if zone == zones["g_motion1"] and (time.time() - self.garage_notify > 180):
                     pushover.push(f"Notify zone is open: {zone}", 1)
+                    self.garage_notify = time.time()
 
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
@@ -1342,22 +1343,22 @@ buzzer_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=())
 
-home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
-logging.info("Zones to arm when home: %s", home_zones)
+home_zones = {v for k, v in zones.items() if "home" in v.arm_modes}
+logging.info("Arm home zones: %s", home_zones)
 
-away_zones = [v for k, v in zones.items() if "away" in v.arm_modes]
-logging.info("Zones to arm when away: %s", away_zones)
+away_zones = {v for k, v in zones.items() if "away" in v.arm_modes}
+logging.info("Arm away zones: %s", away_zones)
 
-water_zones = [v for k, v in zones.items() if "water" in v.arm_modes]
+water_zones = {v for k, v in zones.items() if "water" in v.arm_modes}
 logging.info("Water alarm zones: %s", water_zones)
 
-direct_zones = [v for k, v in zones.items() if "direct" in v.arm_modes]
+direct_zones = {v for k, v in zones.items() if "direct" in v.arm_modes}
 logging.info("Direct alarm zones: %s", direct_zones)
 
-fire_zones = [v for k, v in zones.items() if "fire" in v.arm_modes]
+fire_zones = {v for k, v in zones.items() if "fire" in v.arm_modes}
 logging.info("Fire alarm zones: %s", fire_zones)
 
-passive_zones = [v for k, v in zones.items() if not v.arm_modes]
+passive_zones = {v for k, v in zones.items() if not v.arm_modes}
 logging.info("Passive alarm zones: %s", passive_zones)
 
 if __name__ == "__main__":
