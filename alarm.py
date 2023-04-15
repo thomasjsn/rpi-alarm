@@ -744,8 +744,8 @@ class State:
         #if not timer.zone_value:
         #    value = not value
 
-        if self.data["zone_timers"][timer_key] != value:
-            self.data["zone_timers"][timer_key] = value
+        if self.data["zone_timers"][timer_key]["value"] != value:
+            self.data["zone_timers"][timer_key]["value"] = value
             logging.info("Zone timer: %s changed to %s", timer, value)
             self.publish()
 
@@ -1330,12 +1330,17 @@ if args.silent:
     logging.warning("Sirens suppressed, silent mode active!")
 
 for zone_key, zone in zones.items():
-    state.data["zones"][zone_key] = None
     zone.key = zone_key
+    state.data["zones"][zone_key] = None
 
 for timer_key, timer in zone_timers.items():
-    state.data["zone_timers"][timer_key] = None
     timer.key = timer_key
+    state.data["zone_timers"][timer_key] = {
+        "value": None,
+        "attributes": {
+            "seconds": timer.seconds
+        }
+    }
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()

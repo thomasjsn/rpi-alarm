@@ -99,7 +99,9 @@ def discovery(client, entities, inputs, sensors, zone_timers):
         payload_binary_sensor = payload_common | {
             "name": "RPi security alarm " + timer.label.lower() + " timer",
             "unique_id": "rpi_alarm_timer_" + key,
-            "value_template": "{{ value_json.zone_timers." + key + " }}",
+            "value_template": "{{ value_json.zone_timers." + key + ".value }}",
+            "json_attributes_topic": "home/alarm_test",
+            "json_attributes_template": "{{ value_json.zone_timers." + key + ".attributes | tojson }}",
             "payload_off": False,
             "payload_on": True,
             "icon": "mdi:timer"
