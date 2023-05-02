@@ -310,14 +310,14 @@ sensors = {
         timeout=3600,
         dev_class="moisture"
         ),
-    "panel_tamper": Sensor(
-        topic="zigbee2mqtt/Alarm panel",
-        field="tamper",
-        value=True,
-        label="Panel tamper",
-        arm_modes=["home","away"],
-        dev_class="tamper"
-        ),
+#    "panel_tamper": Sensor(
+#        topic="zigbee2mqtt/Alarm panel",
+#        field="tamper",
+#        value=True,
+#        label="Panel tamper",
+#        arm_modes=["home","away"],
+#        dev_class="tamper"
+#        ),
     "panic": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
@@ -566,7 +566,7 @@ alarm_panels = {
             "pending": "entry_delay",
             "arming": "exit_delay"
         },
-        timeout=600
+        timeout=900
     )
 }
 
@@ -762,10 +762,13 @@ def buzzer(seconds, current_state):
             if any([o.get() for o in home_zones]):
                 buzzer_signal(1, [0.2, 0.8])
             else:
-                buzzer_signal(1, [0.1, 0.9])
+                buzzer_signal(1, [0.05, 0.95])
 
         if current_state == "pending":
-            buzzer_signal(1, [0.5, 0.5])
+            if (start_time + (seconds/2)) > time.time():
+                buzzer_signal(2, [0.05, 0.95])
+            else:
+                buzzer_signal(2, [0.05, 0.45])
 
         if state.system != current_state:
             logging.info("Buzzer loop aborted")
@@ -909,7 +912,7 @@ def triggered(current_state, zone):
 def disarmed(user):
     state.system = "disarmed"
     pushover.push(f"System disarmed, by {user}")
-    buzzer_signal(2, [0.1, 0.1])
+    buzzer_signal(2, [0.05, 0.15])
 
 
 def armed_home(user):
@@ -918,7 +921,7 @@ def armed_home(user):
     if not active_home_zones:
         state.system = "armed_home"
         pushover.push(f"System armed home, by {user}")
-        buzzer_signal(1, [0.1, 0.1])
+        buzzer_signal(1, [0.05, 0.05])
     else:
         logging.error("Arm home failed, not clear: %s", active_home_zones)
         state.system = "disarmed"
@@ -1103,7 +1106,7 @@ def on_message(client, userdata, msg):
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
-            code = y.get(panel.fields["code"])
+            code = str(y.get(panel.fields["code"])).lower()
 
             if msg.retain == 1:
                 logging.warning("Discarding action: %s, in retained message from alarm panel: %s", action, panel)
