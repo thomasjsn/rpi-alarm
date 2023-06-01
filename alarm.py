@@ -298,7 +298,7 @@ sensors = {
         field="value",
         value="on",
         label="Garage motion",
-        arm_modes=[],
+        arm_modes=["notify"],
         dev_class="motion"
         ),
     "water_leak1": Sensor(
@@ -618,7 +618,7 @@ class State:
         self.status = {}
         self.code_attempts = 0
         self.zones_open = set()
-        self.garage_notify = time.time()
+        self.notify_timestamps = {}
 
     def json(self):
         return json.dumps(self.data)
@@ -682,9 +682,9 @@ class State:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
             if value and self.system in ["triggered", "armed_home", "armed_away"]:
-                if zone == zones["g_motion1"] and (time.time() - self.garage_notify > 180):
+                if zone in notify_zones and (time.time() - self.notify_timestamps[zone] > 180):
                     pushover.push(f"Notify zone is open: {zone}", 1)
-                    self.garage_notify = time.time()
+                    self.notify_timestamps[zone] = time.time()
 
             #if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
@@ -766,7 +766,7 @@ def buzzer(seconds, current_state):
 
         if current_state == "pending":
             if (start_time + (seconds/2)) > time.time():
-                buzzer_signal(2, [0.05, 0.95])
+                buzzer_signal(1, [0.05, 0.95])
             else:
                 buzzer_signal(2, [0.05, 0.45])
 
@@ -1366,8 +1366,14 @@ logging.info("Direct alarm zones: %s", direct_zones)
 fire_zones = {v for k, v in zones.items() if "fire" in v.arm_modes}
 logging.info("Fire alarm zones: %s", fire_zones)
 
+notify_zones = {v for k, v in zones.items() if "notify" in v.arm_modes}
+logging.info("Notify zones: %s", notify_zones)
+
+for notify in notify_zones:
+    state.notify_timestamps[notify] = time.time()
+
 passive_zones = {v for k, v in zones.items() if not v.arm_modes}
-logging.info("Passive alarm zones: %s", passive_zones)
+logging.info("Passive zones: %s", passive_zones)
 
 if __name__ == "__main__":
     run_led = threading.Thread(target=run_led, args=())
