@@ -293,13 +293,31 @@ sensors = {
         delay=True,
         dev_class="motion"
         ),
-    "g_motion1": Sensor(
+    "garage_motion1": Sensor(
         topic="hass2mqtt/binary_sensor/garasjen_motion/state",
         field="value",
         value="on",
         label="Garage motion",
         arm_modes=["notify"],
         dev_class="motion"
+        ),
+    "shed_door1": Sensor(
+        topic="zigbee2mqtt/Door shed right",
+        field="contact",
+        value=False,
+        label="Shed door right",
+        arm_modes=["notify"],
+        dev_class="door",
+        timeout=3900
+        ),
+    "shed_door2": Sensor(
+        topic="zigbee2mqtt/Door shed left",
+        field="contact",
+        value=False,
+        label="Shed door left",
+        arm_modes=["notify"],
+        dev_class="door",
+        timeout=3900
         ),
     "water_leak1": Sensor(
         topic="zigbee2mqtt/Water leak kitchen",
