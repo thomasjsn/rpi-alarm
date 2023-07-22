@@ -47,7 +47,7 @@ class Arduino:
                     "voltage2": round(sum(self.voltage2) / len(self.voltage2), 2),
                     "temperature": round(sum(self.temperature) / len(self.temperature), 2),
                     "inputs": [not bool(int(received[3]) & (1<<n)) for n in range(5)],
-                    "outputs": [bool(int(received[4]) & (1<<n)) for n in range(5)]
+                    "outputs": [bool(int(received[4]) & (1<<n)) for n in range(7)]
                 }
 
                 self.data = data

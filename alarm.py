@@ -539,6 +539,16 @@ entities = {
         dev_class="update",
         label="Reboot required",
         category="diagnostic"
+        ),
+    "aux_output1": Entity(
+        field="config.aux_output1",
+        component="switch",
+        label="Auxiliary output 1"
+        ),
+    "aux_output2": Entity(
+        field="config.aux_output2",
+        component="switch",
+        label="Auxiliary output 2"
         )
     }
 
@@ -627,7 +637,9 @@ class State:
             "zone_timers": {},
             "config": {
                 "walk_test": config.getboolean("config", "walk_test", fallback=False),
-                "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True)
+                "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True),
+                "aux_output1": config.getboolean("config", "aux_output1", fallback=False),
+                "aux_output2": config.getboolean("config", "aux_output2", fallback=False)
             }
         }
         self._lock = threading.Lock()
@@ -970,7 +982,7 @@ def check(zone):
     if zone in water_zones:
         if not triggered_lock.locked():
             arduino.commands.put([3, True]) # Water valve relay
-            arduino.commands.put([4, True]) # Dishwasher relay (NC)
+            #arduino.commands.put([4, True]) # Dishwasher relay (NC)
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
     if zone in state.blocked:
@@ -1254,6 +1266,11 @@ def serial_data():
 
         state.data["battery"]["test_running"] = battery_test_thread.is_alive()
 
+        if data["outputs"][4] != state.data["config"]["aux_output1"]:
+            arduino.commands.put([5, state.data["config"]["aux_output1"]])
+        if data["outputs"][5] != state.data["config"]["aux_output2"]:
+            arduino.commands.put([6, state.data["config"]["aux_output2"]])
+
         time.sleep(1)
 
         if round(time.time(), 0) % 10 == 0:
@@ -1292,13 +1309,14 @@ def battery_test():
     battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
     arduino.commands.put([2, True]) # Disable charger
 
-    #while arduino.data["voltage1"] > 12:
-    for _ in range(10):
+    #for _ in range(10):
+    while arduino.data["voltage1"] > 12:
         time.sleep(1)
 
     test_time = round(time.time() - start_time, 0)
     battery_log.info("Battery test completed at %s V, took: %s",
                      arduino.data["voltage1"], datetime.timedelta(seconds=test_time))
+    pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
     arduino.commands.put([2, False]) # Re-enable charger
 
 def reboot_required():
@@ -1340,9 +1358,11 @@ arduino = Arduino(logging)
 
 # Temporary turn off relays related to water alarm here,
 # until a proper reset is implemented.
-for i in range(3, 5):
+for i in range(3, 4):
     arduino.commands.put([i, False])
 
+# Since the Arduino resets when DTR is pulled low, the
+# siren block is removed when starting up.
 if args.siren_block_relay:
     arduino.commands.put([1, True]) # Siren block relay
     logging.warning("Sirens blocked, siren block active!")
@@ -1369,28 +1389,28 @@ buzzer_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=())
 
-home_zones = {v for k, v in zones.items() if "home" in v.arm_modes}
+home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
 logging.info("Arm home zones: %s", home_zones)
 
-away_zones = {v for k, v in zones.items() if "away" in v.arm_modes}
+away_zones = [v for k, v in zones.items() if "away" in v.arm_modes]
 logging.info("Arm away zones: %s", away_zones)
 
-water_zones = {v for k, v in zones.items() if "water" in v.arm_modes}
+water_zones = [v for k, v in zones.items() if "water" in v.arm_modes]
 logging.info("Water alarm zones: %s", water_zones)
 
-direct_zones = {v for k, v in zones.items() if "direct" in v.arm_modes}
+direct_zones = [v for k, v in zones.items() if "direct" in v.arm_modes]
 logging.info("Direct alarm zones: %s", direct_zones)
 
-fire_zones = {v for k, v in zones.items() if "fire" in v.arm_modes}
+fire_zones = [v for k, v in zones.items() if "fire" in v.arm_modes]
 logging.info("Fire alarm zones: %s", fire_zones)
 
-notify_zones = {v for k, v in zones.items() if "notify" in v.arm_modes}
+notify_zones = [v for k, v in zones.items() if "notify" in v.arm_modes]
 logging.info("Notify zones: %s", notify_zones)
 
 for notify in notify_zones:
     state.notify_timestamps[notify] = time.time()
 
-passive_zones = {v for k, v in zones.items() if not v.arm_modes}
+passive_zones = [v for k, v in zones.items() if not v.arm_modes]
 logging.info("Passive zones: %s", passive_zones)
 
 if __name__ == "__main__":
