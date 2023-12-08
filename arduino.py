@@ -2,6 +2,7 @@ import serial
 import time
 import queue
 
+
 class Arduino:
     def __init__(self, logging):
         self.data = {}
@@ -20,10 +21,10 @@ class Arduino:
                 if received == "":
                     continue
 
-                #print(received)
+                # print(received)
                 received = received.split("|")
 
-                ## factors
+                # Factors
                 # voltage1: 12.004 / 2.975
                 # voltage2: 12.004 / 2.979
 
@@ -46,8 +47,8 @@ class Arduino:
                     "voltage1": round(sum(self.voltage1) / len(self.voltage1), 2),
                     "voltage2": round(sum(self.voltage2) / len(self.voltage2), 2),
                     "temperature": round(sum(self.temperature) / len(self.temperature), 2),
-                    "inputs": [not bool(int(received[3]) & (1<<n)) for n in range(5)],
-                    "outputs": [bool(int(received[4]) & (1<<n)) for n in range(7)]
+                    "inputs": [not bool(int(received[3]) & (1 << n)) for n in range(5)],
+                    "outputs": [bool(int(received[4]) & (1 << n)) for n in range(7)]
                 }
 
                 self.data = data
@@ -57,11 +58,10 @@ class Arduino:
                     self.__handle_commands(ser)
                     time.sleep(0.1)
 
-
     def __handle_commands(self, ser):
         while not self.commands.empty():
             idx, value = self.commands.get()
-            value_int = int(value == True)
+            value_int = int(value is True)
 
             ser.write(str.encode(f"o,{idx},{value_int}\n"))
             self.logging.info("Arduino output %d set to %s", idx, value)

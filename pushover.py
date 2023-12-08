@@ -1,6 +1,8 @@
 import time
 import threading
-import http.client, urllib
+import http.client
+import urllib
+
 
 class Pushover:
     def __init__(self, token, user):

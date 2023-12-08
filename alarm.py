@@ -25,16 +25,22 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--silent', dest='silent', action='store_true', help="suppress siren outputs")
-parser.add_argument('--siren-block', dest='siren_block_relay', action='store_true', help="activate siren block relay")
-parser.add_argument('--payload', dest='print_payload', action='store_true', help="print payload on publish")
-parser.add_argument('--status', dest='print_status', action='store_true', help="print status object on publish")
-parser.add_argument('--serial', dest='print_serial', action='store_true', help="print serial data on receive")
-parser.add_argument('--timers', dest='print_timers', action='store_true', help="print timers debug")
-parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG","INFO","WARNING"], help="set log level")
-#parser.set_defaults(feature=True)
+parser.add_argument('--silent', dest='silent', action='store_true',
+                    help="suppress siren outputs")
+parser.add_argument('--siren-block', dest='siren_block_relay', action='store_true',
+                    help="activate siren block relay")
+parser.add_argument('--payload', dest='print_payload', action='store_true',
+                    help="print payload on publish")
+parser.add_argument('--status', dest='print_status', action='store_true',
+                    help="print status object on publish")
+parser.add_argument('--serial', dest='print_serial', action='store_true',
+                    help="print serial data on receive")
+parser.add_argument('--timers', dest='print_timers', action='store_true',
+                    help="print timers debug")
+parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG", "INFO", "WARNING"],
+                    help="set log level")
+# parser.set_defaults(feature=True)
 args = parser.parse_args()
-
 
 
 class Input:
@@ -120,6 +126,7 @@ class Sensor:
         new_attribute = Sensor(topic=topic, field=field, value=value)
         setattr(self, attribute, new_attribute)
 
+
 class Entity:
     def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None, icon=None):
         self.field = field
@@ -183,62 +190,62 @@ inputs = {
         gpio=2,
         label="External tamper",
         dev_class="tamper",
-        arm_modes=["home","away"]
-        ),
+        arm_modes=["home", "away"]
+    ),
     "zone01": Input(
         gpio=3,
         label="1st floor hallway motion",
         dev_class="motion"
-        ),
-    #"zone02": Input(4),
-    #"zone03": Input(17),
-    #"zone04": Input(27),
-    #"zone05": Input(14),
-    #"zone06": Input(15),
-    #"zone07": Input(18),
-    #"zone08": Input(22),
-    #"zone09": Input(23),
-    #"1st_floor_tamper": Input(
+    ),
+    # "zone02": Input(4),
+    # "zone03": Input(17),
+    # "zone04": Input(27),
+    # "zone05": Input(14),
+    # "zone06": Input(15),
+    # "zone07": Input(18),
+    # "zone08": Input(22),
+    # "zone09": Input(23),
+    # "1st_floor_tamper": Input(
     #    gpio=24,
     #    label="1st floor tamper",
     #    dev_class="tamper",
     #    arm_modes=[]
     #    ),
-    #"zone11": None,
-    #"zone12": None,
-    }
+    # "zone11": None,
+    # "zone12": None,
+}
 
 outputs = {
     "led_red": Output(
         gpio=5,
         label="Red LED"
-        ),
+    ),
     "led_green": Output(
         gpio=6,
         label="Green LED"
-        ),
+    ),
     "buzzer": Output(
         gpio=16,
         label="Buzzer"
-        ),
+    ),
     "siren1": Output(
         gpio=19,
         label="Siren indoor",
         debug=True
-        ),
+    ),
     "siren2": Output(
         gpio=26,
         label="Siren outdoor",
         debug=True
-        ),
+    ),
     "beacon": Output(
         gpio=13,
         label="Beacon",
         debug=True
-        ),
-    #"aux1": Output(20),
-    #"aux2": Output(21)
-    }
+    ),
+    # "aux1": Output(20),
+    # "aux2": Output(21)
+}
 
 sensors = {
     "door1": Sensor(
@@ -247,28 +254,28 @@ sensors = {
         value=False,
         label="Front door",
         delay=True,
-        arm_modes=["home","away"],
+        arm_modes=["home", "away"],
         dev_class="door",
         timeout=3900
-        ),
+    ),
     "door2": Sensor(
         topic="zigbee2mqtt/Door back",
         field="contact",
         value=False,
         label="Back door",
-        arm_modes=["home","away"],
+        arm_modes=["home", "away"],
         dev_class="door",
         timeout=3900
-        ),
+    ),
     "door3": Sensor(
         topic="zigbee2mqtt/Door 2nd floor",
         field="contact",
         value=False,
         label="2nd floor door",
-        arm_modes=["home","away"],
+        arm_modes=["home", "away"],
         dev_class="door",
         timeout=3900
-        ),
+    ),
     "motion1": Sensor(
         topic="zigbee2mqtt/Motion kitchen",
         field="occupancy",
@@ -276,7 +283,7 @@ sensors = {
         label="Kitchen motion",
         timeout=3900,
         dev_class="motion"
-        ),
+    ),
     "motion3": Sensor(
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
         field="value",
@@ -284,7 +291,7 @@ sensors = {
         label="Entrance motion",
         delay=True,
         dev_class="motion"
-        ),
+    ),
     "garage_motion1": Sensor(
         topic="hass2mqtt/binary_sensor/garasjen_motion/state",
         field="value",
@@ -292,7 +299,7 @@ sensors = {
         label="Garage motion",
         arm_modes=["notify"],
         dev_class="motion"
-        ),
+    ),
     "water_leak1": Sensor(
         topic="zigbee2mqtt/Water kitchen dishwasher",
         field="water_leak",
@@ -301,7 +308,7 @@ sensors = {
         arm_modes=["water"],
         timeout=3600,
         dev_class="moisture"
-        ),
+    ),
     "water_leak2": Sensor(
         topic="zigbee2mqtt/Water kitchen sink",
         field="water_leak",
@@ -310,64 +317,64 @@ sensors = {
         arm_modes=["water"],
         timeout=3600,
         dev_class="moisture"
-        ),
-#    "panel_tamper": Sensor(
-#        topic="zigbee2mqtt/Alarm panel",
-#        field="tamper",
-#        value=True,
-#        label="Panel tamper",
-#        arm_modes=["home","away"],
-#        dev_class="tamper"
-#        ),
+    ),
+    # "panel_tamper": Sensor(
+    #     topic="zigbee2mqtt/Alarm panel",
+    #     field="tamper",
+    #     value=True,
+    #     label="Panel tamper",
+    #     arm_modes=["home","away"],
+    #     dev_class="tamper"
+    # ),
     "panic": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value="panic",
         label="Panic button",
         arm_modes=["direct"]
-        ),
+    ),
     "emergency1": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value="emergency",
         label="Emergency button 1",
         arm_modes=["direct"]
-        ),
+    ),
     "emergency2": Sensor(
         topic="zigbee2mqtt/Panel entrance",
         field="action",
         value="emergency",
         label="Emergency button 2",
         arm_modes=["direct"]
-        ),
+    ),
     "fire_test": Sensor(
         topic="home/alarm_test/test/fire",
         field="value",
         value="on",
         label="Fire test",
         arm_modes=["fire"]
-        )
-    }
+    )
+}
 
 sensors["door1"].add_attribute("battery", 20)
 sensors["door2"].add_attribute("battery", 20)
 sensors["door3"].add_attribute("battery", 20)
 sensors["motion1"].add_attribute("battery", 20)
-#sensors["motion2"].add_attribute("battery", 20)
+# sensors["motion2"].add_attribute("battery", 20)
 sensors["water_leak1"].add_attribute("battery", 20)
 sensors["water_leak2"].add_attribute("battery", 20)
-#sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
+# sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
 
 sensors["door1"].add_attribute("linkquality", 20)
 sensors["door2"].add_attribute("linkquality", 20)
 sensors["door3"].add_attribute("linkquality", 20)
 sensors["motion1"].add_attribute("linkquality", 20)
-#sensors["motion2"].add_attribute("linkquality", 20)
+# sensors["motion2"].add_attribute("linkquality", 20)
 sensors["water_leak1"].add_attribute("linkquality", 20)
 sensors["water_leak2"].add_attribute("linkquality", 20)
-#sensors["panel_tamper"].add_attribute("linkquality", 20)
+# sensors["panel_tamper"].add_attribute("linkquality", 20)
 
-#sensors["door1"].status = Sensor(
+# sensors["door1"].status = Sensor(
 #        topic="zwave/Front_door/status",
 #        field="status",
 #        value="Awake"
@@ -394,28 +401,28 @@ entities = {
         label="Triggered alarm",
         icon="alarm-bell",
         category="diagnostic"
-        ),
+    ),
     "safe_to_arm": Entity(
         field="arm_not_ready",
         component="binary_sensor",
         dev_class="safety",
         label="Ready to arm",
         category="diagnostic"
-        ),
+    ),
     "system_fault": Entity(
         field="fault",
         component="binary_sensor",
         dev_class="problem",
         label="System status",
         category="diagnostic"
-        ),
+    ),
     "system_tamper": Entity(
         field="tamper",
         component="binary_sensor",
         dev_class="tamper",
         label="System tamper",
         category="diagnostic"
-        ),
+    ),
     "system_temperature": Entity(
         field="temperature",
         component="sensor",
@@ -423,7 +430,7 @@ entities = {
         unit="°C",
         label="System temperature",
         category="diagnostic"
-        ),
+    ),
     "battery_voltage": Entity(
         field="battery.voltage",
         component="sensor",
@@ -431,7 +438,7 @@ entities = {
         unit="V",
         label="Battery voltage",
         category="diagnostic"
-        ),
+    ),
     "battery_level": Entity(
         field="battery.level",
         component="sensor",
@@ -439,28 +446,28 @@ entities = {
         unit="%",
         label="Battery",
         category="diagnostic"
-        ),
+    ),
     "battery_low": Entity(
         field="battery.low",
         component="binary_sensor",
         dev_class="battery",
         label="Battery low",
         category="diagnostic"
-        ),
+    ),
     "battery_chrg": Entity(
         field="battery.charging",
         component="binary_sensor",
         dev_class="battery_charging",
         label="Battery charging",
         category="diagnostic"
-        ),
+    ),
     "battery_test_running": Entity(
         field="battery.test_running",
         component="binary_sensor",
         dev_class="running",
         label="Battery test",
         category="diagnostic"
-        ),
+    ),
     "auxiliary_voltage": Entity(
         field="auxiliary_voltage",
         component="sensor",
@@ -468,110 +475,110 @@ entities = {
         unit="V",
         label="Auxiliary voltage",
         category="diagnostic"
-        ),
+    ),
     "walk_test": Entity(
         field="config.walk_test",
         component="switch",
         label="Walk test",
         icon="walk",
         category="config"
-        ),
+    ),
     "door_open_warning": Entity(
         field="config.door_open_warning",
         component="switch",
         label="Door open warning",
         icon="door-open",
         category="config"
-        ),
+    ),
     "siren_test": Entity(
         field=None,
         component="button",
         label="Siren test",
         icon="bullhorn",
         category="diagnostic"
-        ),
+    ),
     "battery_test": Entity(
         field=None,
         component="button",
         label="Battery test",
         icon="battery-clock",
         category="diagnostic"
-        ),
+    ),
     "water_alarm_test": Entity(
         field=None,
         component="button",
         label="Water alarm test",
         icon="water-alert",
         category="diagnostic"
-        ),
+    ),
     "mains_power": Entity(
         field="mains_power_ok",
         component="binary_sensor",
         dev_class="power",
         label="Mains power",
         category="diagnostic"
-        ),
+    ),
     "zigbee_bridge": Entity(
         field="zigbee_bridge",
         component="binary_sensor",
         dev_class="connectivity",
         label="Zigbee bridge",
         category="diagnostic"
-        ),
+    ),
     "reboot_required": Entity(
         field="reboot_required",
         component="binary_sensor",
         dev_class="update",
         label="Reboot required",
         category="diagnostic"
-        ),
+    ),
     "aux_output1": Entity(
         field="config.aux_output1",
         component="switch",
         label="Auxiliary output 1"
-        ),
+    ),
     "aux_output2": Entity(
         field="config.aux_output2",
         component="switch",
         label="Auxiliary output 2"
-        )
-    }
+    )
+}
 
 zone_timers = {
     "hallway_motion": ZoneTimer(
-        zones=["zone01","motion2"],
-        #zone_value=True,
+        zones=["zone01", "motion2"],
+        # zone_value=True,
         label="Hallway motion",
         blocked_state=["armed_away"]
     ),
     "kitchen_motion": ZoneTimer(
         zones=["motion1"],
-        #zone_value=True,
+        # zone_value=True,
         label="Kitchen motion",
-        blocked_state=["armed_away","armed_home"]
+        blocked_state=["armed_away", "armed_home"]
     )
 }
 
 alarm_panels = {
     "home_assistant": AlarmPanel(
         topic="home/alarm_test/set",
-        fields={"action":"action", "code":"code"},
-        actions={"disarm":"DISARM", "arm_away":"ARM_AWAY", "arm_home":"ARM_HOME"},
+        fields={"action": "action", "code": "code"},
+        actions={"disarm": "DISARM", "arm_away": "ARM_AWAY", "arm_home": "ARM_HOME"},
         label="Home Assistant"
     ),
     "climax": AlarmPanel(
         topic="zigbee2mqtt/Alarm panel",
-        fields={"action":"action", "code":"action_code"},
-        actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
+        fields={"action": "action", "code": "action_code"},
+        actions={"disarm": "disarm", "arm_away": "arm_all_zones", "arm_home": "arm_day_zones"},
         label="Climax",
         timeout=2100
     ),
     "develco1": AlarmPanel(
         topic="zigbee2mqtt/Panel entrance",
-        fields={"action":"action", "code":"action_code"},
-        actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
+        fields={"action": "action", "code": "action_code"},
+        actions={"disarm": "disarm", "arm_away": "arm_all_zones", "arm_home": "arm_day_zones"},
         label="Develco entrance",
-        set_states = {
+        set_states={
             "disarmed": "disarm",
             "armed_home": "arm_day_zones",
             "armed_away": "arm_all_zones",
@@ -583,12 +590,12 @@ alarm_panels = {
     )
 }
 
-format = "%(asctime)s - %(levelname)s: %(message)s"
-logging.basicConfig(format=format, level=logging.DEBUG, datefmt="%H:%M:%S")
+logging_format = "%(asctime)s - %(levelname)s: %(message)s"
+logging.basicConfig(format=logging_format, level=logging.DEBUG, datefmt="%H:%M:%S")
 
 battery_log = logging.getLogger("battery")
 battery_log_handler = logging.FileHandler('battery.log')
-battery_log_handler.setFormatter(logging.Formatter(format))
+battery_log_handler.setFormatter(logging.Formatter(logging_format))
 battery_log.addHandler(battery_log_handler)
 
 if args.log_level:
@@ -602,13 +609,16 @@ for output in outputs.values():
     GPIO.setup(output.gpio, GPIO.OUT)
     output.set(False)
 
+
 def wrapping_up():
     for output in outputs.values():
         output.set(False)
 
     logging.info("All outputs set to False")
 
+
 atexit.register(wrapping_up)
+
 
 class State:
     def __init__(self):
@@ -660,7 +670,7 @@ class State:
         with self._lock:
             logging.warning("System state changed to: %s", state)
 
-            #if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
+            # if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
             if state in ["disarmed", "armed_home", "armed_away"]:
                 self.code_attempts = 0
                 self.data["triggered"] = None
@@ -680,7 +690,6 @@ class State:
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
                 panel.set(state)
 
-
     def zone(self, zone_key, value):
         zone = zones[zone_key]
 
@@ -690,7 +699,7 @@ class State:
 
             for timer_key, timer in zone_timers.items():
                 if zone_key in timer.zones:
-                    #logging.debug("Zone: %s found in timer %s", zone, timer_key)
+                    # logging.debug("Zone: %s found in timer %s", zone, timer_key)
                     self.zone_timer(timer_key)
 
             if value and (state.data["config"]["walk_test"]):
@@ -701,7 +710,7 @@ class State:
                     pushover.push(f"Notify zone is open: {zone}", 1)
                     self.notify_timestamps[zone] = time.time()
 
-            #if value and zone.dev_class == "door" and self.system == "disarmed":
+            # if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
             tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == 'tamper'}
@@ -738,11 +747,11 @@ class State:
     def zone_timer(self, timer_key):
         timer = zone_timers[timer_key]
         timer_zones = [v for k, v in self.data["zones"].items() if k in timer.zones]
-        #print(json.dumps(timer_zones, indent=4, sort_keys=True))
+        # print(json.dumps(timer_zones, indent=4, sort_keys=True))
 
-        #if timer.zone_value:
+        # if timer.zone_value:
         #    zone_state = any(timer_zones)
-        #else:
+        # else:
         #    zone_state = not any(timer_zones)
 
         zone_state = any(timer_zones)
@@ -756,7 +765,7 @@ class State:
         last_msg_s = round(time.time() - timer.timestamp)
         value = last_msg_s < timer.seconds
 
-        #if not timer.zone_value:
+        # if not timer.zone_value:
         #    value = not value
 
         if self.data["zone_timers"][timer_key]["value"] != value:
@@ -806,7 +815,7 @@ def siren(seconds, zone, current_state):
     logging.info("Siren loop started (%d seconds, %s, %s)",
                  seconds, zone, current_state)
     start_time = time.time()
-    #zones_open = len(state.zones_open)
+    # zones_open = len(state.zones_open)
 
     while (start_time + seconds) > time.time():
         # ANSI S3.41-1990; Temporal Three or T3 pattern
@@ -848,7 +857,7 @@ def siren(seconds, zone, current_state):
 
             return False
 
-        #if len(state.zones_open) > zones_open:
+        # if len(state.zones_open) > zones_open:
         #    logging.warning("Open triggered zones increased, extending trigger time")
         #    logging.debug("Trigger time increased by: %d seconds", time.time() - start_time)
         #    start_time = time.time()
@@ -950,8 +959,8 @@ def water_alarm():
         water_alarm_time = time.time()
         logging.warning("Entered water alarm lock!")
 
-        arduino.commands.put([3, True]) # Water valve relay
-        arduino.commands.put([4, True]) # Dishwasher relay (NC)
+        arduino.commands.put([3, True])  # Water valve relay
+        arduino.commands.put([4, True])  # Dishwasher relay (NC)
 
         # Keep in loop until manually reset
         while not arduino.data["inputs"][4]:
@@ -965,8 +974,8 @@ def water_alarm():
 
         # Turn water back on if manual switch enabled
         if arduino.data["inputs"][3]:
-            arduino.commands.put([3, False]) # Water valve relay
-            arduino.commands.put([4, False]) # Dishwasher relay (NC)
+            arduino.commands.put([3, False])  # Water valve relay
+            arduino.commands.put([4, False])  # Dishwasher relay (NC)
 
 
 def run_led():
@@ -1083,7 +1092,7 @@ def on_message(client, userdata, msg):
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
-    if msg.topic == "home/alarm_test/config" and all(k in y for k in ("option","value")):
+    if msg.topic == "home/alarm_test/config" and all(k in y for k in ("option", "value")):
         cfg_option = y["option"]
         cfg_value = y["value"]
 
@@ -1096,14 +1105,14 @@ def on_message(client, userdata, msg):
         state.publish()
         return
 
-    if msg.topic == "home/alarm_test/action" and all(k in y for k in ("option","value")):
+    if msg.topic == "home/alarm_test/action" and all(k in y for k in ("option", "value")):
         act_option = y["option"]
         act_value = y["value"]
 
         logging.info("Action triggered: %s, with value: %s", act_option, act_value)
 
         if act_option == "siren_test" and act_value:
-            #arduino.commands.put([1, True]) # Siren block relay
+            # arduino.commands.put([1, True]) # Siren block relay
             with pending_lock:
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
@@ -1111,11 +1120,11 @@ def on_message(client, userdata, msg):
                 siren_test_zones = [v for k, v in zones.items() if v.dev_class == "tamper"]
                 if siren_test_zones and len(zones) > 2:
                     state.zones_open.update(list(zones.values())[:2])
-                    siren(3, siren_test_zones[0], "disarmed") # use first tamper zone to test
-                    #state.zones_open.clear()
+                    siren(3, siren_test_zones[0], "disarmed")  # use first tamper zone to test
+                    # state.zones_open.clear()
                 else:
                     logging.error("Not enough zones defined, unable to run siren test!")
-            #arduino.commands.put([1, False]) # Siren block relay
+            # arduino.commands.put([1, False]) # Siren block relay
 
         if act_option == "zone_timer_cancel" and act_value in zone_timers:
             timer = zone_timers[act_value]
@@ -1132,7 +1141,7 @@ def on_message(client, userdata, msg):
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             if water_zones:
-                check(water_zones[0]) # use first water sensor to test
+                check(water_zones[0])  # use first water sensor to test
             else:
                 logging.error("No water zones defined, unable to run water alarm test!")
 
@@ -1150,7 +1159,7 @@ def on_message(client, userdata, msg):
                 logging.warning("Discarding action: %s, in retained message from alarm panel: %s", action, panel)
                 continue
 
-            #if panel.emergency and action == panel.emergency:
+            # if panel.emergency and action == panel.emergency:
             #    logging.warning(f"Emergency from panel: {panel.label}")
 
             if code in codes:
@@ -1193,7 +1202,7 @@ def on_message(client, userdata, msg):
                     state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
                 elif type(sensor.battery.value) == bool:
                     state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
-                #print(f"Sensor {key} battery: {y[sensor.battery.field]}")
+                # print(f"Sensor {key} battery: {y[sensor.battery.field]}")
 
         if hasattr(sensor, 'status'):
             if msg.topic == sensor.status.topic and sensor.status.field in y:
@@ -1203,7 +1212,7 @@ def on_message(client, userdata, msg):
         if hasattr(sensor, 'linkquality'):
             if msg.topic == sensor.linkquality.topic and sensor.linkquality.field in y:
                 state.status[f"sensor_{key}_linkquality"] = y[sensor.linkquality.field] > sensor.linkquality.value
-                #print(f"Sensor {key} linkquality: {y[sensor.linkquality.field]}")
+                # print(f"Sensor {key} linkquality: {y[sensor.linkquality.field]}")
 
 
 def status_check():
@@ -1240,6 +1249,7 @@ def hc_ping():
 
         time.sleep(60)
 
+
 def serial_data():
     water_valve_switch = True
 
@@ -1271,8 +1281,8 @@ def serial_data():
         except ValueError:
             logging.error("ValueError on data from Arduino device")
 
-        #state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
-        #state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
+        # state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
+        # state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
         state.data["battery"]["test_running"] = battery_test_thread.is_alive()
@@ -1291,6 +1301,7 @@ def serial_data():
 
         if round(time.time(), 0) % 10 == 0:
             state.publish()
+
 
 def door_open_warning():
     door_closed_time = time.time()
@@ -1320,12 +1331,12 @@ def door_open_warning():
         else:
             time.sleep(1)
 
+
 def battery_test():
     start_time = time.time()
     battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
-    arduino.commands.put([2, True]) # Disable charger
+    arduino.commands.put([2, True])  # Disable charger
 
-    #for _ in range(10):
     while arduino.data["voltage1"] > 12:
         time.sleep(1)
 
@@ -1333,7 +1344,8 @@ def battery_test():
     battery_log.info("Battery test completed at %s V, took: %s",
                      arduino.data["voltage1"], datetime.timedelta(seconds=test_time))
     pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
-    arduino.commands.put([2, False]) # Re-enable charger
+    arduino.commands.put([2, False])  # Re-enable charger
+
 
 def reboot_required():
     while True:
@@ -1356,7 +1368,7 @@ for attempt in range(5):
     try:
         client.connect(config.get("mqtt", "host"))
         client.loop_start()
-    except:
+    except OSError:
         logging.error("Unable to connect MQTT, retry... (%d)", attempt)
         time.sleep(attempt*3)
     else:
@@ -1372,15 +1384,10 @@ pushover = Pushover(
 
 arduino = Arduino(logging)
 
-# Temporary turn off relays related to water alarm here,
-# until a proper reset is implemented.
-#for i in range(3, 4):
-#    arduino.commands.put([i, False])
-
 # Since the Arduino resets when DTR is pulled low, the
 # siren block is removed when starting up.
 if args.siren_block_relay:
-    arduino.commands.put([1, True]) # Siren block relay
+    arduino.commands.put([1, True])  # Siren block relay
     logging.warning("Sirens blocked, siren block active!")
 
 if args.silent:
@@ -1454,9 +1461,8 @@ if __name__ == "__main__":
             if input.is_true:
                 check(input)
 
-        if (not triggered_lock.locked() and
-                (outputs["siren1"].is_true or outputs["siren2"].is_true)):
+        if not triggered_lock.locked() and (outputs["siren1"].is_true or outputs["siren2"].is_true):
+            logging.critical("Siren(s) on outside lock!")
+            wrapping_up()
 
-                logging.critical("Siren(s) on outside lock!")
-                wrapping_up()
-                os._exit(os.EX_SOFTWARE)
+            raise SystemError("Siren(s) on outside lock!")

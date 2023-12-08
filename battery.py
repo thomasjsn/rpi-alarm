@@ -22,7 +22,8 @@ battery_voltage = {
     0: 10.5
 }
 
+
 def level(input_voltage):
-    for level, voltage in battery_voltage.items():
+    for percentage, voltage in battery_voltage.items():
         if input_voltage >= voltage:
-            return level
+            return percentage
