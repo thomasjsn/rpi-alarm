@@ -277,14 +277,6 @@ sensors = {
         timeout=3900,
         dev_class="motion"
         ),
-    "motion2": Sensor(
-        topic="zigbee2mqtt/Motion 2nd floor",
-        field="occupancy",
-        value=True,
-        label="2nd floor hallway motion",
-        timeout=3900,
-        dev_class="motion"
-        ),
     "motion3": Sensor(
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
         field="value",
@@ -301,29 +293,20 @@ sensors = {
         arm_modes=["notify"],
         dev_class="motion"
         ),
-    "shed_door1": Sensor(
-        topic="zigbee2mqtt/Door shed right",
-        field="contact",
-        value=False,
-        label="Shed door right",
-        arm_modes=["notify"],
-        dev_class="door",
-        timeout=3900
-        ),
-    "shed_door2": Sensor(
-        topic="zigbee2mqtt/Door shed left",
-        field="contact",
-        value=False,
-        label="Shed door left",
-        arm_modes=["notify"],
-        dev_class="door",
-        timeout=3900
-        ),
     "water_leak1": Sensor(
-        topic="zigbee2mqtt/Water leak kitchen",
+        topic="zigbee2mqtt/Water kitchen dishwasher",
         field="water_leak",
         value=True,
         label="Kitchen dishwasher leak",
+        arm_modes=["water"],
+        timeout=3600,
+        dev_class="moisture"
+        ),
+    "water_leak2": Sensor(
+        topic="zigbee2mqtt/Water kitchen sink",
+        field="water_leak",
+        value=True,
+        label="Kitchen sink leak",
         arm_modes=["water"],
         timeout=3600,
         dev_class="moisture"
@@ -351,7 +334,7 @@ sensors = {
         arm_modes=["direct"]
         ),
     "emergency2": Sensor(
-        topic="zigbee2mqtt/0x0015bc0043000dd1",
+        topic="zigbee2mqtt/Panel entrance",
         field="action",
         value="emergency",
         label="Emergency button 2",
@@ -370,16 +353,18 @@ sensors["door1"].add_attribute("battery", 20)
 sensors["door2"].add_attribute("battery", 20)
 sensors["door3"].add_attribute("battery", 20)
 sensors["motion1"].add_attribute("battery", 20)
-sensors["motion2"].add_attribute("battery", 20)
+#sensors["motion2"].add_attribute("battery", 20)
 sensors["water_leak1"].add_attribute("battery", 20)
+sensors["water_leak2"].add_attribute("battery", 20)
 #sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
 
 sensors["door1"].add_attribute("linkquality", 20)
 sensors["door2"].add_attribute("linkquality", 20)
 sensors["door3"].add_attribute("linkquality", 20)
 sensors["motion1"].add_attribute("linkquality", 20)
-sensors["motion2"].add_attribute("linkquality", 20)
+#sensors["motion2"].add_attribute("linkquality", 20)
 sensors["water_leak1"].add_attribute("linkquality", 20)
+sensors["water_leak2"].add_attribute("linkquality", 20)
 #sensors["panel_tamper"].add_attribute("linkquality", 20)
 
 #sensors["door1"].status = Sensor(
@@ -581,11 +566,11 @@ alarm_panels = {
         label="Climax",
         timeout=2100
     ),
-    "develco": AlarmPanel(
-        topic="zigbee2mqtt/0x0015bc0043000dd1",
+    "develco1": AlarmPanel(
+        topic="zigbee2mqtt/Panel entrance",
         fields={"action":"action", "code":"action_code"},
         actions={"disarm":"disarm", "arm_away":"arm_all_zones", "arm_home":"arm_day_zones"},
-        label="Develco",
+        label="Develco entrance",
         set_states = {
             "disarmed": "disarm",
             "armed_home": "arm_day_zones",
@@ -960,6 +945,30 @@ def armed_home(user):
         buzzer_signal(1, [1, 0])
 
 
+def water_alarm():
+    with water_alarm_lock:
+        water_alarm_time = time.time()
+        logging.warning("Entered water alarm lock!")
+
+        arduino.commands.put([3, True]) # Water valve relay
+        arduino.commands.put([4, True]) # Dishwasher relay (NC)
+
+        # Keep in loop until manually reset
+        while not arduino.data["inputs"][4]:
+            if math.floor(time.time() - water_alarm_time) % 30 == 0:
+                buzzer_signal(1, [0.5, 0.5])
+                buzzer_signal(2, [0.1, 0.2])
+            else:
+                time.sleep(1)
+
+        logging.info("Leaving water alarm lock.")
+
+        # Turn water back on if manual switch enabled
+        if arduino.data["inputs"][3]:
+            arduino.commands.put([3, False]) # Water valve relay
+            arduino.commands.put([4, False]) # Dishwasher relay (NC)
+
+
 def run_led():
     while True:
         run_led = "led_red" if state.data["fault"] else "led_green"
@@ -981,8 +990,7 @@ def check(zone):
 
     if zone in water_zones:
         if not triggered_lock.locked():
-            arduino.commands.put([3, True]) # Water valve relay
-            #arduino.commands.put([4, True]) # Dishwasher relay (NC)
+            threading.Thread(target=water_alarm, args=()).start()
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
 
     if zone in state.blocked:
@@ -1205,7 +1213,8 @@ def status_check():
                 continue
 
             last_msg_s = round(time.time() - device.timestamp)
-            state.status[f"device_{key}_alive"] = last_msg_s < device.timeout
+            state.status[f"device_{key}_timeout"] = last_msg_s < device.timeout
+            state.status[f"device_{key}_lost"] = last_msg_s < 86400
 
         state.status["code_attempts"] = state.code_attempts < 3
 
@@ -1232,6 +1241,8 @@ def hc_ping():
         time.sleep(60)
 
 def serial_data():
+    water_valve_switch = True
+
     while True:
         data = arduino.data
 
@@ -1270,6 +1281,11 @@ def serial_data():
             arduino.commands.put([5, state.data["config"]["aux_output1"]])
         if data["outputs"][5] != state.data["config"]["aux_output2"]:
             arduino.commands.put([6, state.data["config"]["aux_output2"]])
+
+        if data["inputs"][3] != water_valve_switch and not water_alarm_lock.locked():
+            arduino.commands.put([3, not data["inputs"][3]])
+            water_valve_switch = data["inputs"][3]
+            logging.info("Water valve switch changed state: %s", data["inputs"][3])
 
         time.sleep(1)
 
@@ -1358,8 +1374,8 @@ arduino = Arduino(logging)
 
 # Temporary turn off relays related to water alarm here,
 # until a proper reset is implemented.
-for i in range(3, 4):
-    arduino.commands.put([i, False])
+#for i in range(3, 4):
+#    arduino.commands.put([i, False])
 
 # Since the Arduino resets when DTR is pulled low, the
 # siren block is removed when starting up.
@@ -1386,6 +1402,7 @@ for timer_key, timer in zone_timers.items():
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
 buzzer_lock = threading.Lock()
+water_alarm_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=())
 
