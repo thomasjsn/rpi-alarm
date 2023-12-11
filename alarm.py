@@ -11,6 +11,7 @@ import atexit
 import os
 import math
 from itertools import chain
+from dataclasses import dataclass, field
 
 from pushover import Pushover
 import hass
@@ -43,7 +44,12 @@ parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG",
 args = parser.parse_args()
 
 
-class Input:
+@dataclass
+class Zone:
+    key: str
+
+
+class Input(Zone):
     def __init__(self, gpio, label=None, dev_class=None, delay=False, arm_modes=["away"]):
         self.gpio = gpio
         self.label = label or f"Input {self.gpio}"
@@ -92,7 +98,7 @@ class Output:
         return self.get()
 
 
-class Sensor:
+class Sensor(Zone):
     def __init__(self, topic, field, value, label=None, delay=False, arm_modes=["away"], timeout=0, dev_class=None):
         self.topic = topic
         self.field = field
@@ -127,18 +133,17 @@ class Sensor:
         setattr(self, attribute, new_attribute)
 
 
-class Entity:
-    def __init__(self, field, component, label=None, dev_class=None, unit=None, category=None, icon=None):
-        self.field = field
-        self.component = component
-        self.label = label
-        self.dev_class = dev_class
-        self.unit = unit
-        self.category = category
-        self.icon = icon
-
-    def __str__(self):
-        return self.label
+# @dataclass
+# class Zones:
+#     inputs: dict[str, Input]
+#     sensors: dict[str, Sensor]
+#
+#     @property
+#     def all(self) -> dict[str, Zone]:
+#         return self.inputs | self.sensors
+#
+#     def get(self, zone_key):
+#         return next((zone for key, zone in self.all if key == zone_key), None)
 
 
 class ZoneTimer:
@@ -381,6 +386,7 @@ sensors["water_leak2"].add_attribute("linkquality", 20)
 #        )
 
 zones = inputs | sensors
+# zones = Zones(inputs, sensors)
 
 codes = dict(config.items("codes"))
 
@@ -393,156 +399,6 @@ valid_states = [
     "arming"
 ]
 
-entities = {
-    "triggered": Entity(
-        field="triggered",
-        component="sensor",
-        dev_class="enum",
-        label="Triggered alarm",
-        icon="alarm-bell",
-        category="diagnostic"
-    ),
-    "safe_to_arm": Entity(
-        field="arm_not_ready",
-        component="binary_sensor",
-        dev_class="safety",
-        label="Ready to arm",
-        category="diagnostic"
-    ),
-    "system_fault": Entity(
-        field="fault",
-        component="binary_sensor",
-        dev_class="problem",
-        label="System status",
-        category="diagnostic"
-    ),
-    "system_tamper": Entity(
-        field="tamper",
-        component="binary_sensor",
-        dev_class="tamper",
-        label="System tamper",
-        category="diagnostic"
-    ),
-    "system_temperature": Entity(
-        field="temperature",
-        component="sensor",
-        dev_class="temperature",
-        unit="°C",
-        label="System temperature",
-        category="diagnostic"
-    ),
-    "battery_voltage": Entity(
-        field="battery.voltage",
-        component="sensor",
-        dev_class="voltage",
-        unit="V",
-        label="Battery voltage",
-        category="diagnostic"
-    ),
-    "battery_level": Entity(
-        field="battery.level",
-        component="sensor",
-        dev_class="battery",
-        unit="%",
-        label="Battery",
-        category="diagnostic"
-    ),
-    "battery_low": Entity(
-        field="battery.low",
-        component="binary_sensor",
-        dev_class="battery",
-        label="Battery low",
-        category="diagnostic"
-    ),
-    "battery_chrg": Entity(
-        field="battery.charging",
-        component="binary_sensor",
-        dev_class="battery_charging",
-        label="Battery charging",
-        category="diagnostic"
-    ),
-    "battery_test_running": Entity(
-        field="battery.test_running",
-        component="binary_sensor",
-        dev_class="running",
-        label="Battery test",
-        category="diagnostic"
-    ),
-    "auxiliary_voltage": Entity(
-        field="auxiliary_voltage",
-        component="sensor",
-        dev_class="voltage",
-        unit="V",
-        label="Auxiliary voltage",
-        category="diagnostic"
-    ),
-    "walk_test": Entity(
-        field="config.walk_test",
-        component="switch",
-        label="Walk test",
-        icon="walk",
-        category="config"
-    ),
-    "door_open_warning": Entity(
-        field="config.door_open_warning",
-        component="switch",
-        label="Door open warning",
-        icon="door-open",
-        category="config"
-    ),
-    "siren_test": Entity(
-        field=None,
-        component="button",
-        label="Siren test",
-        icon="bullhorn",
-        category="diagnostic"
-    ),
-    "battery_test": Entity(
-        field=None,
-        component="button",
-        label="Battery test",
-        icon="battery-clock",
-        category="diagnostic"
-    ),
-    "water_alarm_test": Entity(
-        field=None,
-        component="button",
-        label="Water alarm test",
-        icon="water-alert",
-        category="diagnostic"
-    ),
-    "mains_power": Entity(
-        field="mains_power_ok",
-        component="binary_sensor",
-        dev_class="power",
-        label="Mains power",
-        category="diagnostic"
-    ),
-    "zigbee_bridge": Entity(
-        field="zigbee_bridge",
-        component="binary_sensor",
-        dev_class="connectivity",
-        label="Zigbee bridge",
-        category="diagnostic"
-    ),
-    "reboot_required": Entity(
-        field="reboot_required",
-        component="binary_sensor",
-        dev_class="update",
-        label="Reboot required",
-        category="diagnostic"
-    ),
-    "aux_output1": Entity(
-        field="config.aux_output1",
-        component="switch",
-        label="Auxiliary output 1"
-    ),
-    "aux_output2": Entity(
-        field="config.aux_output2",
-        component="switch",
-        label="Auxiliary output 2"
-    )
-}
 
 zone_timers = {
     "hallway_motion": ZoneTimer(
@@ -1060,7 +916,7 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         client.connected_flag = True
         state.status["mqtt_connected"] = True
-        hass.discovery(client, entities, inputs, sensors, zone_timers)
+        hass.discovery(client, inputs, sensors, zone_timers)
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
@@ -1411,7 +1267,7 @@ triggered_lock = threading.Lock()
 buzzer_lock = threading.Lock()
 water_alarm_lock = threading.Lock()
 
-battery_test_thread = threading.Thread(target=battery_test, args=())
+battery_test_thread = threading.Thread(target=battery_test, args=(), daemon=True)
 
 home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
 logging.info("Arm home zones: %s", home_zones)
@@ -1438,19 +1294,18 @@ passive_zones = [v for k, v in zones.items() if not v.arm_modes]
 logging.info("Passive zones: %s", passive_zones)
 
 if __name__ == "__main__":
-    run_led = threading.Thread(target=run_led, args=())
-    run_led.start()
+    threading.Thread(target=run_led, args=(), daemon=True).start()
 
-    threading.Thread(target=status_check, args=()).start()
+    threading.Thread(target=status_check, args=(), daemon=True).start()
 
-    threading.Thread(target=hc_ping, args=()).start()
+    threading.Thread(target=hc_ping, args=(), daemon=True).start()
 
-    threading.Thread(target=arduino.get_data, args=()).start()
-    threading.Thread(target=serial_data, args=()).start()
+    threading.Thread(target=arduino.get_data, args=(), daemon=True).start()
+    threading.Thread(target=serial_data, args=(), daemon=True).start()
 
-    threading.Thread(target=door_open_warning, args=()).start()
+    threading.Thread(target=door_open_warning, args=(), daemon=True).start()
 
-    threading.Thread(target=reboot_required, args=()).start()
+    threading.Thread(target=reboot_required, args=(), daemon=True).start()
 
     while True:
         time.sleep(0.01)

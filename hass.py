@@ -1,7 +1,8 @@
 import json
+from data_entities import entities
 
 
-def discovery(client, entities, inputs, sensors, zone_timers):
+def discovery(client, inputs, sensors, zone_timers):
     payload_common = {
         "state_topic": "home/alarm_test",
         "enabled_by_default": True,
@@ -16,10 +17,10 @@ def discovery(client, entities, inputs, sensors, zone_timers):
         }
     }
 
-    for key, entity in entities.items():
+    for entity in entities:
         payload = payload_common | {
             "name": "RPi security alarm " + entity.label.lower(),
-            "unique_id": "rpi_alarm_" + key
+            "unique_id": "rpi_alarm_" + entity.id
         }
 
         if entity.field is not None:
@@ -35,8 +36,8 @@ def discovery(client, entities, inputs, sensors, zone_timers):
 
         if entity.component == "switch":
             payload = payload | {
-                    "payload_off": json.dumps({"option": key, "value": False}),
-                    "payload_on": json.dumps({"option": key, "value": True}),
+                    "payload_off": json.dumps({"option": entity.id, "value": False}),
+                    "payload_on": json.dumps({"option": entity.id, "value": True}),
                     "state_off": False,
                     "state_on": True,
                     "command_topic": "home/alarm_test/config"
@@ -44,7 +45,7 @@ def discovery(client, entities, inputs, sensors, zone_timers):
 
         if entity.component == "button":
             payload = payload | {
-                    "payload_press": json.dumps({"option": key, "value": True}),
+                    "payload_press": json.dumps({"option": entity.id, "value": True}),
                     "command_topic": "home/alarm_test/action"
                     }
 
@@ -68,7 +69,7 @@ def discovery(client, entities, inputs, sensors, zone_timers):
                     "unit_of_measurement": entity.unit
                     }
 
-        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{key}/config',
+        client.publish(f'homeassistant/{entity.component}/rpi_alarm/{entity.id}/config',
                        json.dumps(payload), retain=True)
 
     for key, input in inputs.items():
