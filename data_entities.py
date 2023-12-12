@@ -1,10 +1,11 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
 class Entity:
     id: str
-    data_key: str | None
+    data_key: Optional[str]
     component: str
     label: str
     dev_class: str = None

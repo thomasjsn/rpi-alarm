@@ -49,7 +49,7 @@ class Zone:
     key: str
 
 
-class Input(Zone):
+class Input():
     def __init__(self, gpio, label=None, dev_class=None, delay=False, arm_modes=["away"]):
         self.gpio = gpio
         self.label = label or f"Input {self.gpio}"
@@ -98,7 +98,7 @@ class Output:
         return self.get()
 
 
-class Sensor(Zone):
+class Sensor():
     def __init__(self, topic, field, value, label=None, delay=False, arm_modes=["away"], timeout=0, dev_class=None):
         self.topic = topic
         self.field = field

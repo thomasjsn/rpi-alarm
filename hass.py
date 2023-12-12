@@ -23,9 +23,9 @@ def discovery(client, inputs, sensors, zone_timers):
             "unique_id": "rpi_alarm_" + entity.id
         }
 
-        if entity.field is not None:
+        if entity.data_key is not None:
             payload = payload | {
-                "value_template": "{{ value_json." + entity.field + " }}"
+                "value_template": "{{ value_json." + entity.data_key + " }}"
             }
 
         if entity.component == "binary_sensor":
