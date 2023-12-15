@@ -1,8 +1,9 @@
 import json
+import paho.mqtt.client as mqtt
 from data_entities import entities
 
 
-def discovery(client, inputs, sensors, zone_timers):
+def discovery(client: mqtt.Client, inputs, sensors, zone_timers) -> None:
     payload_common = {
         "state_topic": "home/alarm_test",
         "enabled_by_default": True,
@@ -19,7 +20,7 @@ def discovery(client, inputs, sensors, zone_timers):
 
     for entity in entities:
         payload = payload_common | {
-            "name": "RPi security alarm " + entity.label.lower(),
+            "name": entity.label,
             "unique_id": "rpi_alarm_" + entity.id
         }
 
@@ -74,9 +75,9 @@ def discovery(client, inputs, sensors, zone_timers):
 
     for key, input in inputs.items():
         payload = payload_common | {
-            "name": "RPi security alarm " + input.label.lower(),
+            "name": input.label,
             "unique_id": "rpi_alarm_" + key,
-            "device_class": input.dev_class,
+            "device_class": input.dev_class.value,
             "value_template": "{{ value_json.zones." + key + " }}",
             "payload_off": False,
             "payload_on": True,
@@ -86,12 +87,12 @@ def discovery(client, inputs, sensors, zone_timers):
                        json.dumps(payload), retain=True)
 
     for key, sensor in sensors.items():
-        if sensor.dev_class is None:
+        if sensor.dev_class.value is None:
             continue
         payload = payload_common | {
-            "name": "RPi security alarm " + sensor.label.lower(),
+            "name": sensor.label,
             "unique_id": "rpi_alarm_" + key,
-            "device_class": sensor.dev_class,
+            "device_class": sensor.dev_class.value,
             "value_template": "{{ value_json.zones." + key + " }}",
             "payload_off": False,
             "payload_on": True,
@@ -102,7 +103,7 @@ def discovery(client, inputs, sensors, zone_timers):
 
     for key, timer in zone_timers.items():
         payload_binary_sensor = payload_common | {
-            "name": "RPi security alarm " + timer.label.lower() + " timer",
+            "name": timer.label + " timer",
             "unique_id": "rpi_alarm_timer_" + key,
             "value_template": "{{ value_json.zone_timers." + key + ".value }}",
             "json_attributes_topic": "home/alarm_test",
@@ -115,7 +116,7 @@ def discovery(client, inputs, sensors, zone_timers):
                        json.dumps(payload_binary_sensor), retain=True)
 
         payload_button = payload_common | {
-            "name": "RPi security alarm " + timer.label.lower() + " timer cancel",
+            "name": timer.label + " timer cancel",
             "unique_id": "rpi_alarm_timer_cancel_" + key,
             "payload_press": json.dumps({"option": "zone_timer_cancel", "value": key}),
             "command_topic": "home/alarm_test/action",
@@ -125,7 +126,7 @@ def discovery(client, inputs, sensors, zone_timers):
                        json.dumps(payload_button), retain=True)
 
     alarm_control_panel = payload_common | {
-        "name": "RPi security alarm panel",
+        "name": "Panel",
         "unique_id": "rpi_alarm_panel",
         "value_template": "{{ value_json.state }}",
         "command_topic": "home/alarm_test/set",

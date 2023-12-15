@@ -11,7 +11,8 @@ import atexit
 import os
 import math
 from itertools import chain
-from dataclasses import dataclass, field
+# from dataclasses import dataclass, field
+from enum import Enum, auto
 
 from pushover import Pushover
 import hass
@@ -44,17 +45,51 @@ parser.add_argument('--log', dest='log_level', action='store', choices=["DEBUG",
 args = parser.parse_args()
 
 
-@dataclass
-class Zone:
-    key: str
+class ArmMode(Enum):
+    Home = auto()
+    Away = auto()
+    AwayDelayed = auto()
+    Water = auto()
+    Direct = auto()
+    Fire = auto()
+    Notify = auto()
 
 
-class Input():
-    def __init__(self, gpio, label=None, dev_class=None, delay=False, arm_modes=["away"]):
+class AlarmState(Enum):
+    Disarmed = "disarmed"
+    ArmedHome = "armed_home"
+    ArmedAway = "armed_away"
+    Triggered = "triggered"
+    Pending = "pending"
+    Arming = "arming"
+
+
+class SensorValue(Enum):
+    Truthy = True
+    Falsy = False
+    On = "on"
+    Panic = "panic"
+    Emergency = "emergency"
+
+
+class DevClass(Enum):
+    Generic = None
+    Tamper = "tamper"
+    Motion = "motion"
+    Door = "door"
+    Moisture = "moisture"
+
+
+# @dataclass
+# class Zone:
+#     key: str
+
+
+class Input:
+    def __init__(self, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
         self.gpio = gpio
-        self.label = label or f"Input {self.gpio}"
+        self.label = label
         self.dev_class = dev_class
-        self.delay = delay
         self.arm_modes = arm_modes
 
     def __str__(self):
@@ -72,9 +107,9 @@ class Input():
 
 
 class Output:
-    def __init__(self, gpio, label=None, debug=False):
+    def __init__(self, gpio: int, label: str, debug: bool = False):
         self.gpio = gpio
-        self.label = label or f"Output {self.gpio}"
+        self.label = label
         self.debug = debug
 
     def __str__(self):
@@ -98,17 +133,17 @@ class Output:
         return self.get()
 
 
-class Sensor():
-    def __init__(self, topic, field, value, label=None, delay=False, arm_modes=["away"], timeout=0, dev_class=None):
+class Sensor:
+    def __init__(self, topic: str, field: str, value: SensorValue, label: str, dev_class: DevClass,
+                 arm_modes: list[ArmMode], timeout: int = 0):
         self.topic = topic
         self.field = field
         self.value = value
         self.label = label
-        self.delay = delay
+        self.dev_class = dev_class
         self.arm_modes = arm_modes
         self.timeout = timeout
         self.timestamp = time.time()
-        self.dev_class = dev_class
 
     def __str__(self):
         return self.label
@@ -122,15 +157,6 @@ class Sensor():
     @property
     def is_true(self):
         return self.get()
-
-    def add_attribute(self, attribute, value, topic=None, field=None):
-        if topic is None:
-            topic = self.topic
-        if field is None:
-            field = attribute
-
-        new_attribute = Sensor(topic=topic, field=field, value=value)
-        setattr(self, attribute, new_attribute)
 
 
 # @dataclass
@@ -147,9 +173,9 @@ class Sensor():
 
 
 class ZoneTimer:
-    def __init__(self, zones, zone_value=True, label=None, blocked_state=[]):
+    def __init__(self, zones: list[str], label: str, blocked_state: list[str]):
         self.zones = zones
-        self.zone_value = zone_value
+        self.zone_value = True
         self.label = label
         self.blocked_state = blocked_state
         self.timestamp = time.time()
@@ -166,12 +192,13 @@ class ZoneTimer:
 
 
 class AlarmPanel:
-    def __init__(self, topic, fields, actions, label=None, set_states={}, timeout=0):
+    def __init__(self, topic: str, fields: dict[str, str], actions: dict[str, str], label: str,
+                 set_states: dict[str, str] = None, timeout: int = 0):
         self.topic = topic
         self.fields = fields
         self.actions = actions
         self.label = label
-        self.set_states = set_states
+        self.set_states = set_states or {}
         self.timeout = timeout
         self.timestamp = time.time()
 
@@ -194,13 +221,14 @@ inputs = {
     "ext_tamper": Input(
         gpio=2,
         label="External tamper",
-        dev_class="tamper",
-        arm_modes=["home", "away"]
+        dev_class=DevClass.Tamper,
+        arm_modes=[ArmMode.Home, ArmMode.Away]
     ),
     "zone01": Input(
         gpio=3,
         label="1st floor hallway motion",
-        dev_class="motion"
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Away],
     ),
     # "zone02": Input(4),
     # "zone03": Input(17),
@@ -256,148 +284,119 @@ sensors = {
     "door1": Sensor(
         topic="zigbee2mqtt/Door front",
         field="contact",
-        value=False,
+        value=SensorValue.Falsy,
         label="Front door",
-        delay=True,
-        arm_modes=["home", "away"],
-        dev_class="door",
+        dev_class=DevClass.Door,
+        arm_modes=[ArmMode.Home, ArmMode.AwayDelayed],
         timeout=3900
     ),
     "door2": Sensor(
         topic="zigbee2mqtt/Door back",
         field="contact",
-        value=False,
+        value=SensorValue.Falsy,
         label="Back door",
-        arm_modes=["home", "away"],
-        dev_class="door",
+        dev_class=DevClass.Door,
+        arm_modes=[ArmMode.Home, ArmMode.Away],
         timeout=3900
     ),
     "door3": Sensor(
         topic="zigbee2mqtt/Door 2nd floor",
         field="contact",
-        value=False,
+        value=SensorValue.Falsy,
         label="2nd floor door",
-        arm_modes=["home", "away"],
-        dev_class="door",
+        dev_class=DevClass.Door,
+        arm_modes=[ArmMode.Home, ArmMode.Away],
         timeout=3900
     ),
     "motion1": Sensor(
         topic="zigbee2mqtt/Motion kitchen",
         field="occupancy",
-        value=True,
+        value=SensorValue.Truthy,
         label="Kitchen motion",
-        timeout=3900,
-        dev_class="motion"
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Away],
+        timeout=3900
     ),
     "motion3": Sensor(
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
         field="value",
-        value="on",
+        value=SensorValue.On,
         label="Entrance motion",
-        delay=True,
-        dev_class="motion"
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.AwayDelayed]
     ),
     "garage_motion1": Sensor(
         topic="hass2mqtt/binary_sensor/garasjen_motion/state",
         field="value",
-        value="on",
+        value=SensorValue.On,
         label="Garage motion",
-        arm_modes=["notify"],
-        dev_class="motion"
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Notify]
     ),
     "water_leak1": Sensor(
         topic="zigbee2mqtt/Water kitchen dishwasher",
         field="water_leak",
-        value=True,
+        value=SensorValue.Truthy,
         label="Kitchen dishwasher leak",
-        arm_modes=["water"],
-        timeout=3600,
-        dev_class="moisture"
+        dev_class=DevClass.Moisture,
+        arm_modes=[ArmMode.Water],
+        timeout=3600
     ),
     "water_leak2": Sensor(
         topic="zigbee2mqtt/Water kitchen sink",
         field="water_leak",
-        value=True,
+        value=SensorValue.Truthy,
         label="Kitchen sink leak",
-        arm_modes=["water"],
-        timeout=3600,
-        dev_class="moisture"
+        dev_class=DevClass.Moisture,
+        arm_modes=[ArmMode.Water],
+        timeout=3600
     ),
     # "panel_tamper": Sensor(
     #     topic="zigbee2mqtt/Alarm panel",
     #     field="tamper",
     #     value=True,
     #     label="Panel tamper",
-    #     arm_modes=["home","away"],
+    #     arm_modes=[ArmMode.Home, ArmMode.Away],
     #     dev_class="tamper"
     # ),
     "panic": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
-        value="panic",
+        value=SensorValue.Panic,
         label="Panic button",
-        arm_modes=["direct"]
+        dev_class=DevClass.Generic,
+        arm_modes=[ArmMode.Direct]
     ),
     "emergency1": Sensor(
         topic="zigbee2mqtt/Alarm panel",
         field="action",
-        value="emergency",
+        value=SensorValue.Emergency,
         label="Emergency button 1",
-        arm_modes=["direct"]
+        dev_class=DevClass.Generic,
+        arm_modes=[ArmMode.Direct]
     ),
     "emergency2": Sensor(
         topic="zigbee2mqtt/Panel entrance",
         field="action",
-        value="emergency",
+        value=SensorValue.Emergency,
         label="Emergency button 2",
-        arm_modes=["direct"]
+        dev_class=DevClass.Generic,
+        arm_modes=[ArmMode.Direct]
     ),
     "fire_test": Sensor(
         topic="home/alarm_test/test/fire",
         field="value",
-        value="on",
+        value=SensorValue.On,
         label="Fire test",
-        arm_modes=["fire"]
+        dev_class=DevClass.Generic,
+        arm_modes=[ArmMode.Fire]
     )
 }
-
-sensors["door1"].add_attribute("battery", 20)
-sensors["door2"].add_attribute("battery", 20)
-sensors["door3"].add_attribute("battery", 20)
-sensors["motion1"].add_attribute("battery", 20)
-# sensors["motion2"].add_attribute("battery", 20)
-sensors["water_leak1"].add_attribute("battery", 20)
-sensors["water_leak2"].add_attribute("battery", 20)
-# sensors["panel_tamper"].add_attribute("battery", field="battery_low", value=True)
-
-sensors["door1"].add_attribute("linkquality", 20)
-sensors["door2"].add_attribute("linkquality", 20)
-sensors["door3"].add_attribute("linkquality", 20)
-sensors["motion1"].add_attribute("linkquality", 20)
-# sensors["motion2"].add_attribute("linkquality", 20)
-sensors["water_leak1"].add_attribute("linkquality", 20)
-sensors["water_leak2"].add_attribute("linkquality", 20)
-# sensors["panel_tamper"].add_attribute("linkquality", 20)
-
-# sensors["door1"].status = Sensor(
-#        topic="zwave/Front_door/status",
-#        field="status",
-#        value="Awake"
-#        )
 
 zones = inputs | sensors
 # zones = Zones(inputs, sensors)
 
 codes = dict(config.items("codes"))
-
-valid_states = [
-    "disarmed",
-    "armed_home",
-    "armed_away",
-    "triggered",
-    "pending",
-    "arming"
-]
 
 
 zone_timers = {
@@ -458,12 +457,12 @@ if args.log_level:
     logging.getLogger().setLevel(args.log_level)
     logging.info("Log level set to %s", args.log_level)
 
-for input in inputs.values():
-    GPIO.setup(input.gpio, GPIO.IN)
+for gpio_input in inputs.values():
+    GPIO.setup(gpio_input.gpio, GPIO.IN)
 
-for output in outputs.values():
-    GPIO.setup(output.gpio, GPIO.OUT)
-    output.set(False)
+for gpio_output in outputs.values():
+    GPIO.setup(gpio_output.gpio, GPIO.OUT)
+    gpio_output.set(False)
 
 
 def wrapping_up():
@@ -520,7 +519,7 @@ class State:
 
     @system.setter
     def system(self, state):
-        if state not in valid_states:
+        if state not in [e.value for e in AlarmState]:
             raise ValueError(f"State: {state} is not valid")
 
         with self._lock:
@@ -569,7 +568,7 @@ class State:
             # if value and zone.dev_class == "door" and self.system == "disarmed":
             #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
-            tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == 'tamper'}
+            tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == DevClass.Tamper}
             state.data["tamper"] = any(tamper_zones.values())
 
             for tamper_key, tamper_status in tamper_zones.items():
@@ -731,7 +730,7 @@ def arming(user):
     state.system = "arming"
     arming_time = config.getint("times", "arming")
 
-    if args.silent or args.siren_block_relay:
+    if args.silent:
         arming_time = 10
 
     if buzzer(arming_time, "arming") is True:
@@ -751,7 +750,7 @@ def arming(user):
 def pending(current_state, zone):
     delay_time = config.getint("times", "delay")
 
-    if args.silent or args.siren_block_relay:
+    if args.silent:
         delay_time = 10
 
     with pending_lock:
@@ -765,7 +764,7 @@ def pending(current_state, zone):
 def triggered(current_state, zone):
     trigger_time = config.getint("times", "trigger")
 
-    if args.silent or args.siren_block_relay:
+    if args.silent:
         trigger_time = 30
 
     with triggered_lock:
@@ -836,16 +835,16 @@ def water_alarm():
 
 def run_led():
     while True:
-        run_led = "led_red" if state.data["fault"] else "led_green"
+        run_led_output = "led_red" if state.data["fault"] else "led_green"
 
         if state.system == "disarmed":
             time.sleep(1.5)
         else:
             time.sleep(0.5)
 
-        outputs[run_led].set(True)
+        outputs[run_led_output].set(True)
         time.sleep(0.5)
-        outputs[run_led].set(False)
+        outputs[run_led_output].set(False)
 
 
 def check(zone):
@@ -862,9 +861,9 @@ def check(zone):
         return
 
     if state.system in ["armed_away", "pending"] and zone in away_zones:
-        if zone.delay and not pending_lock.locked():
+        if ArmMode.AwayDelayed in zone.arm_modes and not pending_lock.locked():
             threading.Thread(target=pending, args=("armed_away", zone,)).start()
-        if not zone.delay and not triggered_lock.locked():
+        if ArmMode.Away in zone.arm_modes and not triggered_lock.locked():
             threading.Thread(target=triggered, args=("armed_away", zone,)).start()
 
     if state.system == "armed_home" and zone in home_zones:
@@ -893,7 +892,7 @@ def on_connect(client, userdata, flags, rc):
     topics.add("zigbee2mqtt/bridge/state")
 
     for option in ["config", "action"]:
-        client.subscribe(f"home/alarm_test/{option}")
+        topics.add(f"home/alarm_test/{option}")
 
     for panel in alarm_panels.values():
         topics.add(panel.topic)
@@ -901,17 +900,10 @@ def on_connect(client, userdata, flags, rc):
     for sensor in sensors.values():
         topics.add(sensor.topic)
 
-        if hasattr(sensor, "battery"):
-            topics.add(sensor.battery.topic)
-        if hasattr(sensor, "status"):
-            topics.add(sensor.status.topic)
-        if hasattr(sensor, "linkquality"):
-            topics.add(sensor.linkquality.topic)
+    topic_tuples = [(topic, 0) for topic in topics]
+    logging.debug("Topics: %s", topic_tuples)
 
-    logging.debug("Topics: %s", topics)
-
-    for topic in topics:
-        client.subscribe(topic)
+    client.subscribe(topic_tuples)
 
     if rc == 0:
         client.connected_flag = True
@@ -973,7 +965,7 @@ def on_message(client, userdata, msg):
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             with triggered_lock:
-                siren_test_zones = [v for k, v in zones.items() if v.dev_class == "tamper"]
+                siren_test_zones = [v for k, v in zones.items() if v.dev_class == DevClass.Tamper]
                 if siren_test_zones and len(zones) > 2:
                     state.zones_open.update(list(zones.values())[:2])
                     siren(3, siren_test_zones[0], "disarmed")  # use first tamper zone to test
@@ -1006,6 +998,15 @@ def on_message(client, userdata, msg):
     for key, panel in alarm_panels.items():
         if msg.topic == panel.topic:
             panel.timestamp = time.time()
+
+            if "battery" in y:
+                if isinstance(y["battery"], int):
+                    # logging.debug("Found battery level %s on panel %s", y["battery"], panel)
+                    state.status[f"panel_{key}_battery"] = y["battery"] > 20
+
+            if "linkquality" in y:
+                # logging.debug("Found link quality %s on panel %s", y["linkquality"], panel)
+                state.status[f"panel_{key}_linkquality"] = y["linkquality"] > 20
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1043,32 +1044,23 @@ def on_message(client, userdata, msg):
         if msg.topic == sensor.topic and sensor.field in y:
             sensor.timestamp = time.time()
 
-            state.zone(key, y[sensor.field] == sensor.value)
+            state.zone(key, y[sensor.field] == sensor.value.value)
 
-            if y[sensor.field] == sensor.value:
+            if y[sensor.field] == sensor.value.value:
                 if msg.retain == 1 and sensor in chain(direct_zones, fire_zones):
                     logging.warning("Discarding active sensor: %s, in retained message", sensor)
                     continue
 
                 check(sensor)
 
-        if hasattr(sensor, 'battery'):
-            if msg.topic == sensor.battery.topic and sensor.battery.field in y:
-                if type(sensor.battery.value) == int and type(y[sensor.battery.field]) == int:
-                    state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] > sensor.battery.value
-                elif type(sensor.battery.value) == bool:
-                    state.status[f"sensor_{key}_battery"] = y[sensor.battery.field] != sensor.battery.value
-                # print(f"Sensor {key} battery: {y[sensor.battery.field]}")
+            if "battery" in y:
+                if isinstance(y["battery"], int):
+                    # logging.debug("Found battery level %s on sensor %s", y["battery"], sensor)
+                    state.status[f"sensor_{key}_battery"] = y["battery"] > 20
 
-        if hasattr(sensor, 'status'):
-            if msg.topic == sensor.status.topic and sensor.status.field in y:
-                if y[sensor.status.field] == sensor.status.value:
-                    sensor.timestamp = time.time()
-
-        if hasattr(sensor, 'linkquality'):
-            if msg.topic == sensor.linkquality.topic and sensor.linkquality.field in y:
-                state.status[f"sensor_{key}_linkquality"] = y[sensor.linkquality.field] > sensor.linkquality.value
-                # print(f"Sensor {key} linkquality: {y[sensor.linkquality.field]}")
+            if "linkquality" in y:
+                # logging.debug("Found link quality %s on sensor %s", y["linkquality"], sensor)
+                state.status[f"sensor_{key}_linkquality"] = y["linkquality"] > 20
 
 
 def status_check():
@@ -1203,12 +1195,12 @@ def battery_test():
     arduino.commands.put([2, False])  # Re-enable charger
 
 
-def reboot_required():
+def check_reboot_required():
     while True:
-        reboot_required = os.path.isfile("/var/run/reboot-required")
-        state.data["reboot_required"] = reboot_required
+        reboot_is_required = os.path.isfile("/var/run/reboot-required")
+        state.data["reboot_required"] = reboot_is_required
 
-        if reboot_required:
+        if reboot_is_required:
             logging.warning("Reboot required!")
 
         time.sleep(60*60)
@@ -1269,22 +1261,22 @@ water_alarm_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=(), daemon=True)
 
-home_zones = [v for k, v in zones.items() if "home" in v.arm_modes]
+home_zones = [v for k, v in zones.items() if ArmMode.Home in v.arm_modes]
 logging.info("Arm home zones: %s", home_zones)
 
-away_zones = [v for k, v in zones.items() if "away" in v.arm_modes]
+away_zones = [v for k, v in zones.items() if ArmMode.Away in v.arm_modes or ArmMode.AwayDelayed in v.arm_modes]
 logging.info("Arm away zones: %s", away_zones)
 
-water_zones = [v for k, v in zones.items() if "water" in v.arm_modes]
+water_zones = [v for k, v in zones.items() if ArmMode.Water in v.arm_modes]
 logging.info("Water alarm zones: %s", water_zones)
 
-direct_zones = [v for k, v in zones.items() if "direct" in v.arm_modes]
+direct_zones = [v for k, v in zones.items() if ArmMode.Direct in v.arm_modes]
 logging.info("Direct alarm zones: %s", direct_zones)
 
-fire_zones = [v for k, v in zones.items() if "fire" in v.arm_modes]
+fire_zones = [v for k, v in zones.items() if ArmMode.Fire in v.arm_modes]
 logging.info("Fire alarm zones: %s", fire_zones)
 
-notify_zones = [v for k, v in zones.items() if "notify" in v.arm_modes]
+notify_zones = [v for k, v in zones.items() if ArmMode.Notify in v.arm_modes]
 logging.info("Notify zones: %s", notify_zones)
 
 for notify in notify_zones:
@@ -1305,16 +1297,16 @@ if __name__ == "__main__":
 
     threading.Thread(target=door_open_warning, args=(), daemon=True).start()
 
-    threading.Thread(target=reboot_required, args=(), daemon=True).start()
+    threading.Thread(target=check_reboot_required, args=(), daemon=True).start()
 
     while True:
         time.sleep(0.01)
 
-        for key, input in inputs.items():
-            state.zone(key, input.get())
+        for key, gpio_input in inputs.items():
+            state.zone(key, gpio_input.get())
 
-            if input.is_true:
-                check(input)
+            if gpio_input.is_true:
+                check(gpio_input)
 
         if not triggered_lock.locked() and (outputs["siren1"].is_true or outputs["siren2"].is_true):
             logging.critical("Siren(s) on outside lock!")
