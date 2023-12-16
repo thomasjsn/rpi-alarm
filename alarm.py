@@ -18,7 +18,7 @@ from pushover import Pushover
 import hass
 import healthchecks
 from arduino import Arduino
-import battery
+from battery import Battery
 
 GPIO.setmode(GPIO.BCM)   # set board mode to Broadcom
 GPIO.setwarnings(False)  # don't show warnings
@@ -1115,10 +1115,10 @@ def serial_data():
             state.data["temperature"] = data["temperature"]
             state.status["cabinet_temp"] = data["temperature"] < 30
 
-            state.data["battery"]["voltage"] = data["voltage1"]
-            state.data["battery"]["level"] = battery.level(data["voltage1"])
-            state.data["battery"]["low"] = data["voltage1"] < 12
-            state.data["battery"]["charging"] = data["voltage1"] > 13
+            state.data["battery_voltage"] = data["voltage1"]
+            state.data["battery_level"] = battery.level(data["voltage1"])
+            state.data["battery_low"] = data["voltage1"] < 12
+            state.data["battery_charging"] = data["voltage1"] > 13
 
             state.data["auxiliary_voltage"] = data["voltage2"]
             state.data["mains_power_ok"] = data["voltage2"] > 12
@@ -1133,7 +1133,7 @@ def serial_data():
         # state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["sirens_not_blocked"] = data["outputs"][0] is False
 
-        state.data["battery"]["test_running"] = battery_test_thread.is_alive()
+        state.data["battery_test_running"] = battery_test_thread.is_alive()
 
         if data["outputs"][4] != state.data["config"]["aux_output1"]:
             arduino.commands.put([5, state.data["config"]["aux_output1"]])
@@ -1231,6 +1231,7 @@ pushover = Pushover(
         )
 
 arduino = Arduino(logging)
+battery = Battery()
 
 # Since the Arduino resets when DTR is pulled low, the
 # siren block is removed when starting up.

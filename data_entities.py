@@ -62,7 +62,7 @@ entities = [
     ),
     Entity(
         id="battery_voltage",
-        data_key="battery.voltage",
+        data_key="battery_voltage",
         component="sensor",
         dev_class="voltage",
         unit="V",
@@ -71,7 +71,7 @@ entities = [
     ),
     Entity(
         id="battery_level",
-        data_key="battery.level",
+        data_key="battery_level",
         component="sensor",
         dev_class="battery",
         unit="%",
@@ -80,7 +80,7 @@ entities = [
     ),
     Entity(
         id="battery_low",
-        data_key="battery.low",
+        data_key="battery_low",
         component="binary_sensor",
         dev_class="battery",
         label="Battery low",
@@ -88,7 +88,7 @@ entities = [
     ),
     Entity(
         id="battery_charging",
-        data_key="battery.charging",
+        data_key="battery_charging",
         component="binary_sensor",
         dev_class="battery_charging",
         label="Battery charging",
@@ -96,7 +96,7 @@ entities = [
     ),
     Entity(
         id="battery_test_running",
-        data_key="battery.test_running",
+        data_key="battery_test_running",
         component="binary_sensor",
         dev_class="running",
         label="Battery test",
