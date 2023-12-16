@@ -5,11 +5,11 @@ import urllib
 
 
 class Pushover:
-    def __init__(self, token, user):
+    def __init__(self, token: str, user: str):
         self.token = token
         self.user = user
 
-    def _push(self, message, priority=0, data={}):
+    def _push(self, message: str, priority: int, data: dict):
         if priority == 2:
             data = {
                 "sound": "alien",
@@ -29,5 +29,8 @@ class Pushover:
                      } | data), {"Content-type": "application/x-www-form-urlencoded"})
         conn.getresponse()
 
-    def push(self, message, priority=0, data={}):
+    def push(self, message: str, priority: int = 0, data: dict = None):
+        if data is None:
+            data = {}
+
         threading.Thread(target=self._push, args=(message, priority, data,)).start()

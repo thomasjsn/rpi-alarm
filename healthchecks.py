@@ -2,7 +2,7 @@ import socket
 import urllib.request
 
 
-def ping(uuid):
+def ping(uuid: str):
     try:
         urllib.request.urlopen(f"https://hc-ping.com/{uuid}", timeout=10)
         return True
