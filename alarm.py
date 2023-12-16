@@ -15,7 +15,7 @@ from itertools import chain
 from enum import Enum, auto
 
 from pushover import Pushover
-import hass
+import hass_discovery as hass
 import healthchecks
 from arduino import Arduino
 from battery import Battery

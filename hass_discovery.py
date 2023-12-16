@@ -1,6 +1,6 @@
 import json
 import paho.mqtt.client as mqtt
-from data_entities import entities
+from hass_entities import entities
 
 
 def discovery(client: mqtt.Client, inputs, sensors, zone_timers) -> None:
