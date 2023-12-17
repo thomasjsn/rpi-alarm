@@ -2,6 +2,28 @@ import serial
 import time
 import queue
 
+'''
+Inputs:
+1. N/C
+2. Siren relay
+3. Siren actual
+4. Water valve switch
+5. Water alarm reset button
+
+Outputs:
+1. Siren block relay
+2. Charger relay (NC)
+3. Water valve relay
+4. Dish washer relay (NC)
+5. Aux 1 (Outdoor lights relay 1)
+6. Aux 2 (Outdoor lights relay 2)
+7. N/C
+
+Note:
+Inputs and outputs are read starting at 0, while outputs are changed starting at 1.
+Meaning output 1 is read as output[0] but changed with "o,1,x".
+'''
+
 
 class Arduino:
     def __init__(self, logging):
