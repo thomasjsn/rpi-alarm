@@ -639,7 +639,7 @@ class State:
             state.data["tamper"] = any(tamper_zones.values())
 
             for tamper_key, tamper_status in tamper_zones.items():
-                state.status[f"{tamper_key}_ok"] = not tamper_status
+                state.status[f"{tamper_key}"] = not tamper_status
 
             clear = not any([o.get() for o in away_zones])
             self.data["arm_not_ready"] = not clear
@@ -1143,6 +1143,7 @@ def status_check():
             state.status[f"device_{key}_lost"] = last_msg_s < 86400
 
         state.status["code_attempts"] = state.code_attempts < 3
+        state.status["arduino_data"] = round(time.time() - arduino.timestamp) < 10
 
         for key, timer in zone_timers.items():
             state.zone_timer(key)
@@ -1162,7 +1163,7 @@ def hc_ping():
 
     while True:
         hc_status = healthchecks.ping(hc_uuid)
-        state.status["healthchecks_ok"] = hc_status
+        state.status["healthchecks"] = hc_status
 
         time.sleep(60)
 
@@ -1193,16 +1194,16 @@ def serial_data():
             state.data["mains_power_ok"] = data["voltage2"] > 12
 
             state.status["battery_voltage"] = data["voltage1"] > 12
-            state.status["mains_power_ok"] = data["voltage2"] > 12
+            state.status["mains_power"] = data["voltage2"] > 12
 
             state.data["water_valve"] = not data["outputs"][2]
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
 
-        # state.status["siren1_output_ok"] = outputs["siren1"].get() == data["inputs"][1]
-        # state.status["siren2_output_ok"] = outputs["siren2"].get() == data["inputs"][2]
-        state.status["sirens_not_blocked"] = data["outputs"][0] is False
+        # state.status["siren1_output"] = outputs["siren1"].get() == data["inputs"][1]
+        # state.status["siren2_output"] = outputs["siren2"].get() == data["inputs"][2]
+        state.status["siren_block"] = data["outputs"][0] is False
 
         state.data["battery_test_running"] = battery_test_thread.is_alive()
 

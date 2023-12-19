@@ -33,6 +33,7 @@ class Arduino:
         self.voltage1 = []
         self.voltage2 = []
         self.temperature = []
+        self.timestamp = time.time()
 
     def get_data(self):
         with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
@@ -74,6 +75,7 @@ class Arduino:
                 }
 
                 self.data = data
+                self.timestamp = time.time()
 
                 start_time = time.time()
                 while (start_time + 1) > time.time():
