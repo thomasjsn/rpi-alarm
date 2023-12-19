@@ -11,8 +11,9 @@ import atexit
 import os
 import math
 from itertools import chain
-# from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import Optional
 
 from pushover import Pushover
 import hass_discovery as hass
@@ -80,17 +81,21 @@ class DevClass(Enum):
     Moisture = "moisture"
 
 
-# @dataclass
-# class Zone:
-#     key: str
-
-
-class Input:
-    def __init__(self, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
-        self.gpio = gpio
+class Zone:
+    def __init__(self, key: str, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
+        self.key = key
         self.label = label
         self.dev_class = dev_class
         self.arm_modes = arm_modes
+
+
+class Input(Zone):
+    def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
+        super().__init__(key, label, dev_class, arm_modes)
+        self.gpio = gpio
+        # self.label = label
+        # self.dev_class = dev_class
+        # self.arm_modes = arm_modes
 
     def __str__(self):
         return self.label
@@ -115,15 +120,15 @@ class Output:
     def __str__(self):
         return self.label
 
-    def set(self, state):
-        if self.get() != state:
-            if self in [outputs["siren1"], outputs["siren2"]] and args.silent and state:
+    def set(self, value):
+        if self.get() != value:
+            if self in [outputs["siren1"], outputs["siren2"]] and args.silent and value:
                 logging.debug("Suppressing %s, because silent", self)
                 return
 
-            GPIO.output(self.gpio, state)
+            GPIO.output(self.gpio, value)
             if self.debug:
-                logging.debug("Output: %s set to %s", self, state)
+                logging.debug("Output: %s set to %s", self, value)
 
     def get(self):
         return GPIO.input(self.gpio) == 1
@@ -133,15 +138,16 @@ class Output:
         return self.get()
 
 
-class Sensor:
-    def __init__(self, topic: str, field: str, value: SensorValue, label: str, dev_class: DevClass,
+class Sensor(Zone):
+    def __init__(self, key: str, topic: str, field: str, value: SensorValue, label: str, dev_class: DevClass,
                  arm_modes: list[ArmMode], timeout: int = 0):
+        super().__init__(key, label, dev_class, arm_modes)
         self.topic = topic
         self.field = field
         self.value = value
-        self.label = label
-        self.dev_class = dev_class
-        self.arm_modes = arm_modes
+        # self.label = label
+        # self.dev_class = dev_class
+        # self.arm_modes = arm_modes
         self.timeout = timeout
         self.timestamp = time.time()
 
@@ -173,7 +179,8 @@ class Sensor:
 
 
 class ZoneTimer:
-    def __init__(self, zones: list[str], label: str, blocked_state: list[str]):
+    def __init__(self, key: str, zones: list[str], label: str, blocked_state: list[str]):
+        self.key = key
         self.zones = zones
         self.zone_value = True
         self.label = label
@@ -208,23 +215,25 @@ class AlarmPanel:
     def __repr__(self):
         return f"p:{self.label}"
 
-    def set(self, state):
-        if state not in self.set_states:
+    def set(self, alarm_state):
+        if alarm_state not in self.set_states:
             return
 
-        logging.debug("Sending state: %s to alarm panel %s", self.set_states[state], self.label)
-        data = {"arm_mode": {"mode": self.set_states[state]}}
+        logging.debug("Sending state: %s to alarm panel %s", self.set_states[alarm_state], self.label)
+        data = {"arm_mode": {"mode": self.set_states[alarm_state]}}
         client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
 
 
 inputs = {
     "ext_tamper": Input(
+        key="ext_tamper",
         gpio=2,
         label="External tamper",
         dev_class=DevClass.Tamper,
         arm_modes=[ArmMode.Home, ArmMode.Away]
     ),
     "zone01": Input(
+        key="zone01",
         gpio=3,
         label="1st floor hallway motion",
         dev_class=DevClass.Motion,
@@ -271,17 +280,18 @@ outputs = {
         label="Siren outdoor",
         debug=True
     ),
-    "beacon": Output(
-        gpio=13,
-        label="Beacon",
-        debug=True
-    ),
+    # "beacon": Output(
+    #     gpio=13,
+    #     label="Beacon",
+    #     debug=True
+    # ),
     # "aux1": Output(20),
     # "aux2": Output(21)
 }
 
 sensors = {
     "door1": Sensor(
+        key="door1",
         topic="zigbee2mqtt/Door front",
         field="contact",
         value=SensorValue.Falsy,
@@ -291,6 +301,7 @@ sensors = {
         timeout=3900
     ),
     "door2": Sensor(
+        key="door2",
         topic="zigbee2mqtt/Door back",
         field="contact",
         value=SensorValue.Falsy,
@@ -300,6 +311,7 @@ sensors = {
         timeout=3900
     ),
     "door3": Sensor(
+        key="door3",
         topic="zigbee2mqtt/Door 2nd floor",
         field="contact",
         value=SensorValue.Falsy,
@@ -309,6 +321,7 @@ sensors = {
         timeout=3900
     ),
     "motion1": Sensor(
+        key="motion1",
         topic="zigbee2mqtt/Motion kitchen",
         field="occupancy",
         value=SensorValue.Truthy,
@@ -318,6 +331,7 @@ sensors = {
         timeout=3900
     ),
     "motion3": Sensor(
+        key="motion3",
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
         field="value",
         value=SensorValue.On,
@@ -326,6 +340,7 @@ sensors = {
         arm_modes=[ArmMode.AwayDelayed]
     ),
     "garage_motion1": Sensor(
+        key="garage_motion1",
         topic="hass2mqtt/binary_sensor/garasjen_motion/state",
         field="value",
         value=SensorValue.On,
@@ -334,6 +349,7 @@ sensors = {
         arm_modes=[ArmMode.Notify]
     ),
     "water_leak1": Sensor(
+        key="water_leak1",
         topic="zigbee2mqtt/Water kitchen dishwasher",
         field="water_leak",
         value=SensorValue.Truthy,
@@ -343,6 +359,7 @@ sensors = {
         timeout=3600
     ),
     "water_leak2": Sensor(
+        key="water_leak2",
         topic="zigbee2mqtt/Water kitchen sink",
         field="water_leak",
         value=SensorValue.Truthy,
@@ -351,15 +368,8 @@ sensors = {
         arm_modes=[ArmMode.Water],
         timeout=3600
     ),
-    # "panel_tamper": Sensor(
-    #     topic="zigbee2mqtt/Alarm panel",
-    #     field="tamper",
-    #     value=True,
-    #     label="Panel tamper",
-    #     arm_modes=[ArmMode.Home, ArmMode.Away],
-    #     dev_class="tamper"
-    # ),
     "panic": Sensor(
+        key="panic",
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value=SensorValue.Panic,
@@ -368,6 +378,7 @@ sensors = {
         arm_modes=[ArmMode.Direct]
     ),
     "emergency1": Sensor(
+        key="emergency1",
         topic="zigbee2mqtt/Alarm panel",
         field="action",
         value=SensorValue.Emergency,
@@ -376,6 +387,7 @@ sensors = {
         arm_modes=[ArmMode.Direct]
     ),
     "emergency2": Sensor(
+        key="emergency2",
         topic="zigbee2mqtt/Panel entrance",
         field="action",
         value=SensorValue.Emergency,
@@ -384,6 +396,7 @@ sensors = {
         arm_modes=[ArmMode.Direct]
     ),
     "fire_test": Sensor(
+        key="fire_test",
         topic="home/alarm_test/test/fire",
         field="value",
         value=SensorValue.On,
@@ -396,17 +409,26 @@ sensors = {
 zones = inputs | sensors
 # zones = Zones(inputs, sensors)
 
+home_zones = [v for k, v in zones.items() if ArmMode.Home in v.arm_modes]
+away_zones = [v for k, v in zones.items() if ArmMode.Away in v.arm_modes or ArmMode.AwayDelayed in v.arm_modes]
+water_zones = [v for k, v in zones.items() if ArmMode.Water in v.arm_modes]
+direct_zones = [v for k, v in zones.items() if ArmMode.Direct in v.arm_modes]
+fire_zones = [v for k, v in zones.items() if ArmMode.Fire in v.arm_modes]
+notify_zones = [v for k, v in zones.items() if ArmMode.Notify in v.arm_modes]
+
 codes = dict(config.items("codes"))
 
 
 zone_timers = {
     "hallway_motion": ZoneTimer(
+        key="hallway_motion",
         zones=["zone01", "motion2"],
         # zone_value=True,
         label="Hallway motion",
         blocked_state=["armed_away"]
     ),
     "kitchen_motion": ZoneTimer(
+        key="kitchen_motion",
         zones=["motion1"],
         # zone_value=True,
         label="Kitchen motion",
@@ -475,58 +497,102 @@ def wrapping_up():
 atexit.register(wrapping_up)
 
 
+@dataclass
+class StateData:
+    arm_not_ready: bool = None
+    auxiliary_voltage: float = None
+    battery_charging: bool = None
+    battery_level: int = None
+    battery_low: bool = None
+    battery_test_running: bool = None
+    battery_voltage: float = None
+    config: dict[str, bool] = field(default_factory=dict)
+    fault: bool = None
+    mains_power_ok: bool = None
+    reboot_required: bool = None
+    state: str = None
+    tamper: bool = None
+    temperature: float = None
+    triggered: Optional[str] = None
+    water_valve: bool = None
+    zigbee_bridge: bool = None
+    zone_timers: dict[str, dict] = field(default_factory=dict)
+    zones: dict[str, Optional[bool]] = field(default_factory=dict)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+    def __setitem__(self, item, value):
+        if not hasattr(self, item):
+            logging.warning("Setting undefined attribute on state data object: %s", item)
+        setattr(self, item, value)
+
+
 class State:
     def __init__(self):
-        self.data = {
-            "state": config.get("system", "state"),
-            "battery": {},
-            "fault": None,
-            "tamper": None,
-            "triggered": None,
-            "zones": {},
-            "zone_timers": {},
-            "config": {
+        # self.data = {
+        #     "state": config.get("system", "state"),
+        #     "battery": {},
+        #     "fault": None,
+        #     "tamper": None,
+        #     "triggered": None,
+        #     "zones": {},
+        #     "zone_timers": {},
+        #     "config": {
+        #         "walk_test": config.getboolean("config", "walk_test", fallback=False),
+        #         "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True),
+        #         "aux_output1": config.getboolean("config", "aux_output1", fallback=False),
+        #         "aux_output2": config.getboolean("config", "aux_output2", fallback=False)
+        #     }
+        # }
+
+        self.data = StateData(
+            state=config.get("system", "state"),
+            config={
                 "walk_test": config.getboolean("config", "walk_test", fallback=False),
                 "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True),
+                "door_chime": config.getboolean("config", "door_chime", fallback=False),
                 "aux_output1": config.getboolean("config", "aux_output1", fallback=False),
                 "aux_output2": config.getboolean("config", "aux_output2", fallback=False)
-            }
-        }
-        self._lock = threading.Lock()
-        self._faults = ["mqtt_connected"]
-        self.blocked = set()
-        self.status = {}
-        self.code_attempts = 0
-        self.zones_open = set()
-        self.notify_timestamps = {}
+            },
+            zones={k: None for k, v in zones.items()},
+            zone_timers={k: {"value": None, "attributes": {"seconds": v.seconds}} for k, v in zone_timers.items()},
+        )
+        self._lock: threading.Lock = threading.Lock()
+        self._faults: list[str] = ["mqtt_connected"]
+        self.blocked: set[Zone] = set()
+        self.status: dict[str, bool] = {}
+        self.code_attempts: int = 0
+        self.zones_open: set[Zone] = set()
+        self.notify_timestamps: dict[Zone, time] = {v: time.time() for v in notify_zones}
 
     def json(self):
-        return json.dumps(self.data)
+        return json.dumps(self.data.__dict__)
 
     def publish(self):
         client.publish("home/alarm_test/availability", "online", retain=True)
         client.publish('home/alarm_test', self.json(), retain=True)
 
         if args.print_payload:
-            print(json.dumps(self.data, indent=4, sort_keys=True))
+            print(json.dumps(self.data.__dict__, indent=2, sort_keys=True))
 
         if args.print_status:
-            print(json.dumps(self.status, indent=4, sort_keys=True))
+            print(json.dumps(self.status, indent=2, sort_keys=True))
 
     @property
     def system(self):
         return self.data["state"]
 
     @system.setter
-    def system(self, state):
-        if state not in [e.value for e in AlarmState]:
-            raise ValueError(f"State: {state} is not valid")
+    def system(self, alarm_state: str):
+        if alarm_state not in [e.value for e in AlarmState]:
+            raise ValueError(f"State: {alarm_state} is not valid")
 
         with self._lock:
-            logging.warning("System state changed to: %s", state)
+            logging.warning("System state changed to: %s", alarm_state)
 
             # if (state == "armed_away" and self.data["state"] == "triggered") or state == "disarmed":
-            if state in ["disarmed", "armed_home", "armed_away"]:
+            if alarm_state in ["disarmed", "armed_home", "armed_away"]:
                 self.code_attempts = 0
                 self.data["triggered"] = None
 
@@ -534,18 +600,18 @@ class State:
                     logging.info("Clearing open zones: %s", self.zones_open)
                     self.zones_open.clear()
 
-            self.data["state"] = state
+            self.data["state"] = alarm_state
             self.publish()
 
-            if state in ["disarmed", "armed_home", "armed_away"]:
+            if alarm_state in ["disarmed", "armed_home", "armed_away"]:
                 with open('config.ini', 'w') as configfile:
-                    config.set("system", "state", state)
+                    config.set("system", "state", alarm_state)
                     config.write(configfile)
 
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
-                panel.set(state)
+                panel.set(alarm_state)
 
-    def zone(self, zone_key, value):
+    def zone(self, zone_key: str, value):
         zone = zones[zone_key]
 
         if self.data["zones"][zone_key] != value:
@@ -557,16 +623,17 @@ class State:
                     # logging.debug("Zone: %s found in timer %s", zone, timer_key)
                     self.zone_timer(timer_key)
 
-            if value and (state.data["config"]["walk_test"]):
+            if value and state.data["config"]["walk_test"]:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
+
+            if (value and state.data["config"]["door_chime"] and zone.dev_class == DevClass.Door
+                    and not state.data["config"]["walk_test"] and self.system == "disarmed"):
+                threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2, 0.5])).start()
 
             if value and self.system in ["triggered", "armed_home", "armed_away"]:
                 if zone in notify_zones and (time.time() - self.notify_timestamps[zone] > 180):
                     pushover.push(f"Notify zone is open: {zone}", 1)
                     self.notify_timestamps[zone] = time.time()
-
-            # if value and zone.dev_class == "door" and self.system == "disarmed":
-            #    threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
             tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == DevClass.Tamper}
             state.data["tamper"] = any(tamper_zones.values())
@@ -599,10 +666,10 @@ class State:
                 logging.info("System status restored")
                 pushover.push("System status restored")
 
-    def zone_timer(self, timer_key):
+    def zone_timer(self, timer_key: str):
         timer = zone_timers[timer_key]
         timer_zones = [v for k, v in self.data["zones"].items() if k in timer.zones]
-        # print(json.dumps(timer_zones, indent=4, sort_keys=True))
+        # print(json.dumps(timer_zones, indent=2, sort_keys=True))
 
         # if timer.zone_value:
         #    zone_state = any(timer_zones)
@@ -632,7 +699,7 @@ class State:
             print(f"{timer}: {datetime.timedelta(seconds=timer.seconds-last_msg_s)}")
 
 
-def buzzer(seconds, current_state):
+def buzzer(seconds: int, current_state: str):
     logging.info("Buzzer loop started (%d seconds)", seconds)
     start_time = time.time()
 
@@ -657,16 +724,18 @@ def buzzer(seconds, current_state):
     return True
 
 
-def buzzer_signal(i, x):
+def buzzer_signal(repeat: int, duration: list[float]):
     with buzzer_lock:
-        for _ in range(i):
+        if len(duration) > 2:
+            time.sleep(duration[2])
+        for _ in range(repeat):
             outputs["buzzer"].set(True)
-            time.sleep(x[0])
+            time.sleep(duration[0])
             outputs["buzzer"].set(False)
-            time.sleep(x[1])
+            time.sleep(duration[1])
 
 
-def siren(seconds, zone, current_state):
+def siren(seconds: int, zone: Zone, current_state: str):
     logging.info("Siren loop started (%d seconds, %s, %s)",
                  seconds, zone, current_state)
     start_time = time.time()
@@ -698,7 +767,7 @@ def siren(seconds, zone, current_state):
 
         else:
             outputs["siren1"].set(True)
-            outputs["beacon"].set(True)
+            # outputs["beacon"].set(True)
 
             if (time.time()-start_time) > (seconds/3) and len(state.zones_open) > 1:
                 outputs["siren2"].set(True)
@@ -707,7 +776,7 @@ def siren(seconds, zone, current_state):
         if state.system != current_state:
             outputs["siren1"].set(False)
             outputs["siren2"].set(False)
-            outputs["beacon"].set(False)
+            # outputs["beacon"].set(False)
             logging.info("Siren loop aborted")
 
             return False
@@ -720,13 +789,13 @@ def siren(seconds, zone, current_state):
 
     outputs["siren1"].set(False)
     outputs["siren2"].set(False)
-    outputs["beacon"].set(False)
+    # outputs["beacon"].set(False)
     logging.info("Siren loop completed")
 
     return True
 
 
-def arming(user):
+def arming(user: str):
     state.system = "arming"
     arming_time = config.getint("times", "arming")
 
@@ -747,7 +816,7 @@ def arming(user):
             buzzer_signal(1, [1, 0])
 
 
-def pending(current_state, zone):
+def pending(current_state: str, zone: Zone):
     delay_time = config.getint("times", "delay")
 
     if args.silent:
@@ -761,7 +830,7 @@ def pending(current_state, zone):
             triggered(current_state, zone)
 
 
-def triggered(current_state, zone):
+def triggered(current_state: str, zone: Zone):
     trigger_time = config.getint("times", "trigger")
 
     if args.silent:
@@ -788,13 +857,13 @@ def triggered(current_state, zone):
             state.system = current_state
 
 
-def disarmed(user):
+def disarmed(user: str):
     state.system = "disarmed"
     pushover.push(f"System disarmed, by {user}")
     buzzer_signal(2, [0.05, 0.15])
 
 
-def armed_home(user):
+def armed_home(user: str):
     active_home_zones = [o.label for o in home_zones if o.get()]
 
     if not active_home_zones:
@@ -847,7 +916,7 @@ def run_led():
         outputs[run_led_output].set(False)
 
 
-def check(zone):
+def check(zone: Zone):
     if zone in fire_zones or (state.system != "armed_away" and zone in direct_zones):
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
@@ -1109,7 +1178,7 @@ def serial_data():
             continue
 
         if args.print_serial:
-            print(json.dumps(data, indent=4, sort_keys=True))
+            print(json.dumps(data, indent=2, sort_keys=True))
 
         try:
             state.data["temperature"] = data["temperature"]
@@ -1125,6 +1194,8 @@ def serial_data():
 
             state.status["battery_voltage"] = data["voltage1"] > 12
             state.status["mains_power_ok"] = data["voltage2"] > 12
+
+            state.data["water_valve"] = not data["outputs"][2]
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
@@ -1242,18 +1313,18 @@ if args.siren_block_relay:
 if args.silent:
     logging.warning("Sirens suppressed, silent mode active!")
 
-for zone_key, zone in zones.items():
-    zone.key = zone_key
-    state.data["zones"][zone_key] = None
-
-for timer_key, timer in zone_timers.items():
-    timer.key = timer_key
-    state.data["zone_timers"][timer_key] = {
-        "value": None,
-        "attributes": {
-            "seconds": timer.seconds
-        }
-    }
+# for zone_key, zone in zones.items():
+#     zone.key = zone_key
+#     state.data["zones"][zone_key] = None
+#
+# for timer_key, timer in zone_timers.items():
+#     timer.key = timer_key
+#     state.data["zone_timers"][timer_key] = {
+#         "value": None,
+#         "attributes": {
+#             "seconds": timer.seconds
+#         }
+#     }
 
 pending_lock = threading.Lock()
 triggered_lock = threading.Lock()
@@ -1262,26 +1333,15 @@ water_alarm_lock = threading.Lock()
 
 battery_test_thread = threading.Thread(target=battery_test, args=(), daemon=True)
 
-home_zones = [v for k, v in zones.items() if ArmMode.Home in v.arm_modes]
 logging.info("Arm home zones: %s", home_zones)
-
-away_zones = [v for k, v in zones.items() if ArmMode.Away in v.arm_modes or ArmMode.AwayDelayed in v.arm_modes]
 logging.info("Arm away zones: %s", away_zones)
-
-water_zones = [v for k, v in zones.items() if ArmMode.Water in v.arm_modes]
 logging.info("Water alarm zones: %s", water_zones)
-
-direct_zones = [v for k, v in zones.items() if ArmMode.Direct in v.arm_modes]
 logging.info("Direct alarm zones: %s", direct_zones)
-
-fire_zones = [v for k, v in zones.items() if ArmMode.Fire in v.arm_modes]
 logging.info("Fire alarm zones: %s", fire_zones)
-
-notify_zones = [v for k, v in zones.items() if ArmMode.Notify in v.arm_modes]
 logging.info("Notify zones: %s", notify_zones)
 
-for notify in notify_zones:
-    state.notify_timestamps[notify] = time.time()
+# for notify in notify_zones:
+#     state.notify_timestamps[notify] = time.time()
 
 passive_zones = [v for k, v in zones.items() if not v.arm_modes]
 logging.info("Passive zones: %s", passive_zones)

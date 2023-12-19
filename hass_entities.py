@@ -128,6 +128,14 @@ entities = [
         category="config"
     ),
     Entity(
+        id="door_chime",
+        data_key="config.door_chime",
+        component="switch",
+        label="Door chime",
+        icon="door-open",
+        category="config"
+    ),
+    Entity(
         id="siren_test",
         data_key=None,
         component="button",
@@ -174,6 +182,13 @@ entities = [
         dev_class="update",
         label="Reboot required",
         category="diagnostic"
+    ),
+    Entity(
+        id="water_valve",
+        data_key="water_valve",
+        component="binary_sensor",
+        dev_class="opening",
+        label="Water valve"
     ),
     Entity(
         id="aux_output1",
