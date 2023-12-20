@@ -1,0 +1,2 @@
+# m h  dom mon dow   command
+0 2 1 * * cd /home/user/rpi-alarm && python3 cli.py --action battery_test >> /dev/null 2>&1
