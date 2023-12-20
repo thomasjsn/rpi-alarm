@@ -1185,13 +1185,14 @@ def serial_data():
             state.data["temperature"] = data["temperature"]
             state.status["cabinet_temp"] = data["temperature"] < 30
 
+            state.data["auxiliary_voltage"] = data["voltage2"]
+            state.data["mains_power_ok"] = data["voltage2"] > 12
+
             state.data["battery_voltage"] = data["voltage1"]
             state.data["battery_level"] = battery.level(data["voltage1"])
             state.data["battery_low"] = data["voltage1"] < 12
-            state.data["battery_charging"] = data["voltage1"] > 13
-
-            state.data["auxiliary_voltage"] = data["voltage2"]
-            state.data["mains_power_ok"] = data["voltage2"] > 12
+            state.data["battery_charging"] = (data["voltage1"] > 13 and state.data["mains_power_ok"]
+                                              and not data["outputs"][1])
 
             state.status["battery_voltage"] = data["voltage1"] > 12
             state.status["mains_power"] = data["voltage2"] > 12
@@ -1257,12 +1258,12 @@ def battery_test():
     battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
     arduino.commands.put([2, True])  # Disable charger
 
-    while arduino.data["voltage1"] > 12:
+    while state.data["battery_level"] > 80:
         time.sleep(1)
 
     test_time = round(time.time() - start_time, 0)
-    battery_log.info("Battery test completed at %s V, took: %s",
-                     arduino.data["voltage1"], datetime.timedelta(seconds=test_time))
+    battery_log.info("Battery test completed at %s V and %s %%, took: %s",
+                     arduino.data["voltage1"], state.data["battery_level"], datetime.timedelta(seconds=test_time))
     pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
     arduino.commands.put([2, False])  # Re-enable charger
 
