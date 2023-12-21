@@ -55,6 +55,11 @@ def discovery(client: mqtt.Client, inputs, sensors, zone_timers) -> None:
                     "device_class": entity.dev_class
                     }
 
+        if entity.state_class is not None:
+            payload = payload | {
+                    "state_class": entity.state_class
+                    }
+
         if entity.category is not None:
             payload = payload | {
                     "entity_category": entity.category
