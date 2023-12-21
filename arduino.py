@@ -1,6 +1,7 @@
 import serial
 import time
 import queue
+import threading
 
 '''
 Inputs:
@@ -34,10 +35,15 @@ class Arduino:
         self.voltage2 = []
         self.temperature = []
         self.timestamp = time.time()
+        self.data_ready = threading.Event()
 
     def get_data(self):
         with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
             while True:
+                self.data_ready.clear()
+                # start_time = time.time()
+                self._handle_commands(ser)
+
                 ser.write(str.encode("s\n"))
                 line = ser.readline()   # read a '\n' terminated line
                 received = line.decode('utf-8').strip()
@@ -76,16 +82,14 @@ class Arduino:
 
                 self.data = data
                 self.timestamp = time.time()
+                self.data_ready.set()
+                # print(time.time() - start_time)
 
-                start_time = time.time()
-                while (start_time + 1) > time.time():
-                    self.__handle_commands(ser)
-                    time.sleep(0.1)
-
-    def __handle_commands(self, ser):
+    def _handle_commands(self, ser):
         while not self.commands.empty():
             idx, value = self.commands.get()
             value_int = int(value is True)
 
             ser.write(str.encode(f"o,{idx},{value_int}\n"))
             self.logging.info("Arduino output %d set to %s", idx, value)
+            self.commands.task_done()

@@ -899,7 +899,8 @@ def water_alarm():
         # Turn water back on if manual switch enabled
         if arduino.data["inputs"][3]:
             arduino.commands.put([3, False])  # Water valve relay
-            arduino.commands.put([4, False])  # Dishwasher relay (NC)
+
+        arduino.commands.put([4, False])  # Dishwasher relay (NC)
 
 
 def run_led():
@@ -1048,10 +1049,16 @@ def on_message(client, userdata, msg):
             timer.cancel()
 
         if act_option == "battery_test" and act_value:
-            if not battery_test_thread.is_alive():
-                battery_test_thread.start()
+            if not battery_test_lock.locked():
+                threading.Thread(target=battery_test, args=(), daemon=True).start()
             else:
                 logging.error("Battery test already running!")
+
+        if act_option == "water_valve_test" and act_value:
+            if not water_valve_test_lock.locked():
+                threading.Thread(target=water_valve_test, args=()).start()
+            else:
+                logging.error("Water valve test already running!")
 
         if act_option == "water_alarm_test" and act_value:
             with pending_lock:
@@ -1172,11 +1179,8 @@ def serial_data():
     water_valve_switch = True
 
     while True:
+        arduino.data_ready.wait()
         data = arduino.data
-
-        if not data:
-            time.sleep(1)
-            continue
 
         if args.print_serial:
             print(json.dumps(data, indent=2, sort_keys=True))
@@ -1206,7 +1210,7 @@ def serial_data():
         # state.status["siren2_output"] = outputs["siren2"].get() == data["inputs"][2]
         state.status["siren_block"] = data["outputs"][0] is False
 
-        state.data["battery_test_running"] = battery_test_thread.is_alive()
+        state.data["battery_test_running"] = battery_test_lock.locked()
 
         if data["outputs"][4] != state.data["config"]["aux_output1"]:
             arduino.commands.put([5, state.data["config"]["aux_output1"]])
@@ -1218,7 +1222,7 @@ def serial_data():
             water_valve_switch = data["inputs"][3]
             logging.info("Water valve switch changed state: %s", data["inputs"][3])
 
-        time.sleep(1)
+        arduino.data_ready.clear()
 
         if round(time.time(), 0) % 10 == 0:
             state.publish()
@@ -1254,18 +1258,37 @@ def door_open_warning():
 
 
 def battery_test():
-    start_time = time.time()
-    battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
-    arduino.commands.put([2, True])  # Disable charger
+    with battery_test_lock:
+        arduino.commands.put([2, True])  # Disable charger
+        arduino.commands.join()
+        start_time = time.time()
+        battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
 
-    while state.data["battery_level"] > 80:
-        time.sleep(1)
+        while state.data["battery_level"] > 50:
+            time.sleep(1)
 
-    test_time = round(time.time() - start_time, 0)
-    battery_log.info("Battery test completed at %s V and %s %%, took: %s",
-                     arduino.data["voltage1"], state.data["battery_level"], datetime.timedelta(seconds=test_time))
-    pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
-    arduino.commands.put([2, False])  # Re-enable charger
+        test_time = round(time.time() - start_time, 0)
+        battery_log.info("Battery test completed at %s V and %s %%, took: %s",
+                         arduino.data["voltage1"], state.data["battery_level"], datetime.timedelta(seconds=test_time))
+        pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
+        arduino.commands.put([2, False])  # Re-enable charger
+        arduino.commands.join()
+
+
+def water_valve_test():
+    with water_valve_test_lock:
+        if arduino.data["outputs"][2] or water_alarm_lock.locked():
+            logging.error("Can not run water valve test if valve is already active or water alarm is triggered")
+            return
+
+        logging.info("Water valve test started")
+
+        for valve_state in [True, False]:
+            arduino.commands.put([3, valve_state])  # Water valve relay
+            arduino.commands.join()
+            time.sleep(1)
+
+        logging.info("Water valve test completed")
 
 
 def check_reboot_required():
@@ -1333,7 +1356,8 @@ triggered_lock = threading.Lock()
 buzzer_lock = threading.Lock()
 water_alarm_lock = threading.Lock()
 
-battery_test_thread = threading.Thread(target=battery_test, args=(), daemon=True)
+battery_test_lock = threading.Lock()
+water_valve_test_lock = threading.Lock()
 
 logging.info("Arm home zones: %s", home_zones)
 logging.info("Arm away zones: %s", away_zones)
