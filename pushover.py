@@ -9,7 +9,7 @@ class Pushover:
         self.token = token
         self.user = user
 
-    def _push(self, message: str, priority: int, data: dict):
+    def _push(self, message: str, priority: int, data: dict) -> None:
         if priority == 2:
             data = {
                 "sound": "alien",
@@ -29,7 +29,7 @@ class Pushover:
                      } | data), {"Content-type": "application/x-www-form-urlencoded"})
         conn.getresponse()
 
-    def push(self, message: str, priority: int = 0, data: dict = None):
+    def push(self, message: str, priority: int = 0, data: dict = None) -> None:
         if data is None:
             data = {}
 

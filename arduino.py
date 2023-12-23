@@ -2,6 +2,7 @@ import serial
 import time
 import queue
 import threading
+import logging
 
 '''
 Inputs:
@@ -27,17 +28,16 @@ Meaning output 1 is read as output[0] but changed with "o,1,x".
 
 
 class Arduino:
-    def __init__(self, logging):
+    def __init__(self):
         self.data = {}
         self.commands = queue.Queue()
-        self.logging = logging
         self.voltage1 = []
         self.voltage2 = []
         self.temperature = []
         self.timestamp = time.time()
         self.data_ready = threading.Event()
 
-    def get_data(self):
+    def get_data(self) -> None:
         with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
             while True:
                 self.data_ready.clear()
@@ -85,11 +85,11 @@ class Arduino:
                 self.data_ready.set()
                 # print(time.time() - start_time)
 
-    def _handle_commands(self, ser):
+    def _handle_commands(self, ser: serial.Serial) -> None:
         while not self.commands.empty():
             idx, value = self.commands.get()
             value_int = int(value is True)
 
             ser.write(str.encode(f"o,{idx},{value_int}\n"))
-            self.logging.info("Arduino output %d set to %s", idx, value)
+            logging.info("Arduino output %d set to %s", idx, value)
             self.commands.task_done()

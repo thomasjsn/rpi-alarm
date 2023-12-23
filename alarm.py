@@ -475,6 +475,11 @@ battery_log_handler = logging.FileHandler('battery.log')
 battery_log_handler.setFormatter(logging.Formatter(logging_format))
 battery_log.addHandler(battery_log_handler)
 
+rpi_gpio_log = logging.getLogger("rpi_gpio")
+rpi_gpio_log_handler = logging.FileHandler('rpi_gpio.log')
+rpi_gpio_log_handler.setFormatter(logging.Formatter(logging_format))
+rpi_gpio_log.addHandler(rpi_gpio_log_handler)
+
 if args.log_level:
     logging.getLogger().setLevel(args.log_level)
     logging.info("Log level set to %s", args.log_level)
@@ -487,7 +492,7 @@ for gpio_output in outputs.values():
     gpio_output.set(False)
 
 
-def wrapping_up():
+def wrapping_up() -> None:
     for output in outputs.values():
         output.set(False)
 
@@ -566,10 +571,10 @@ class State:
         self.zones_open: set[Zone] = set()
         self.notify_timestamps: dict[Zone, time] = {v: time.time() for v in notify_zones}
 
-    def json(self):
+    def json(self) -> str:
         return json.dumps(self.data.__dict__)
 
-    def publish(self):
+    def publish(self) -> None:
         client.publish("home/alarm_test/availability", "online", retain=True)
         client.publish('home/alarm_test', self.json(), retain=True)
 
@@ -580,11 +585,11 @@ class State:
             print(json.dumps(self.status, indent=2, sort_keys=True))
 
     @property
-    def system(self):
+    def system(self) -> str:
         return self.data["state"]
 
     @system.setter
-    def system(self, alarm_state: str):
+    def system(self, alarm_state: str) -> None:
         if alarm_state not in [e.value for e in AlarmState]:
             raise ValueError(f"State: {alarm_state} is not valid")
 
@@ -611,7 +616,7 @@ class State:
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
                 panel.set(alarm_state)
 
-    def zone(self, zone_key: str, value):
+    def zone(self, zone_key: str, value: bool) -> None:
         zone = zones[zone_key]
 
         if self.data["zones"][zone_key] != value:
@@ -650,7 +655,7 @@ class State:
             self.blocked.remove(zone)
             logging.debug("Blocked zones: %s", self.blocked)
 
-    def fault(self):
+    def fault(self) -> None:
         faults = [k for k, v in self.status.items() if not v]
 
         if self._faults != faults:
@@ -666,7 +671,7 @@ class State:
                 logging.info("System status restored")
                 pushover.push("System status restored")
 
-    def zone_timer(self, timer_key: str):
+    def zone_timer(self, timer_key: str) -> None:
         timer = zone_timers[timer_key]
         timer_zones = [v for k, v in self.data["zones"].items() if k in timer.zones]
         # print(json.dumps(timer_zones, indent=2, sort_keys=True))
@@ -699,7 +704,7 @@ class State:
             print(f"{timer}: {datetime.timedelta(seconds=timer.seconds-last_msg_s)}")
 
 
-def buzzer(seconds: int, current_state: str):
+def buzzer(seconds: int, current_state: str) -> bool:
     logging.info("Buzzer loop started (%d seconds)", seconds)
     start_time = time.time()
 
@@ -724,7 +729,7 @@ def buzzer(seconds: int, current_state: str):
     return True
 
 
-def buzzer_signal(repeat: int, duration: list[float]):
+def buzzer_signal(repeat: int, duration: list[float]) -> None:
     with buzzer_lock:
         if len(duration) > 2:
             time.sleep(duration[2])
@@ -735,7 +740,7 @@ def buzzer_signal(repeat: int, duration: list[float]):
             time.sleep(duration[1])
 
 
-def siren(seconds: int, zone: Zone, current_state: str):
+def siren(seconds: int, zone: Zone, current_state: str) -> bool:
     logging.info("Siren loop started (%d seconds, %s, %s)",
                  seconds, zone, current_state)
     start_time = time.time()
@@ -795,7 +800,7 @@ def siren(seconds: int, zone: Zone, current_state: str):
     return True
 
 
-def arming(user: str):
+def arming(user: str) -> None:
     state.system = "arming"
     arming_time = config.getint("times", "arming")
 
@@ -816,7 +821,7 @@ def arming(user: str):
             buzzer_signal(1, [1, 0])
 
 
-def pending(current_state: str, zone: Zone):
+def pending(current_state: str, zone: Zone) -> None:
     delay_time = config.getint("times", "delay")
 
     if args.silent:
@@ -830,7 +835,7 @@ def pending(current_state: str, zone: Zone):
             triggered(current_state, zone)
 
 
-def triggered(current_state: str, zone: Zone):
+def triggered(current_state: str, zone: Zone) -> None:
     trigger_time = config.getint("times", "trigger")
 
     if args.silent:
@@ -857,13 +862,13 @@ def triggered(current_state: str, zone: Zone):
             state.system = current_state
 
 
-def disarmed(user: str):
+def disarmed(user: str) -> None:
     state.system = "disarmed"
     pushover.push(f"System disarmed, by {user}")
     buzzer_signal(2, [0.05, 0.15])
 
 
-def armed_home(user: str):
+def armed_home(user: str) -> None:
     active_home_zones = [o.label for o in home_zones if o.get()]
 
     if not active_home_zones:
@@ -878,7 +883,7 @@ def armed_home(user: str):
         buzzer_signal(1, [1, 0])
 
 
-def water_alarm():
+def water_alarm() -> None:
     with water_alarm_lock:
         water_alarm_time = time.time()
         logging.warning("Entered water alarm lock!")
@@ -903,7 +908,7 @@ def water_alarm():
         arduino.commands.put([4, False])  # Dishwasher relay (NC)
 
 
-def run_led():
+def run_led() -> None:
     while True:
         run_led_output = "led_red" if state.data["fault"] else "led_green"
 
@@ -917,7 +922,7 @@ def run_led():
         outputs[run_led_output].set(False)
 
 
-def check(zone: Zone):
+def check_zone(zone: Zone) -> None:
     if zone in fire_zones or (state.system != "armed_away" and zone in direct_zones):
         if not triggered_lock.locked():
             threading.Thread(target=triggered, args=(state.system, zone,)).start()
@@ -952,7 +957,7 @@ def check(zone: Zone):
 
 
 # The callback for when the client receives a CONNACK response from the server.
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc) -> None:
     logging.info("Connected to MQTT broker with result code %s", rc)
 
     # Subscribing in on_connect() means that if we lose the connection and
@@ -984,7 +989,7 @@ def on_connect(client, userdata, flags, rc):
         print("Bad connection, returned code: ", str(rc))
 
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client, userdata, rc) -> None:
     logging.warning("Disconnecting reason %s", rc)
     client.connected_flag = False
     state.status["mqtt_connected"] = False
@@ -992,7 +997,7 @@ def on_disconnect(client, userdata, rc):
 
 
 # The callback for when a PUBLISH message is received from the server.
-def on_message(client, userdata, msg):
+def on_message(client, userdata, msg) -> None:
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
     if msg.payload.decode('utf-8') == "":
@@ -1065,7 +1070,7 @@ def on_message(client, userdata, msg):
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             if water_zones:
-                check(water_zones[0])  # use first water sensor to test
+                check_zone(water_zones[0])  # use first water sensor to test
             else:
                 logging.error("No water zones defined, unable to run water alarm test!")
 
@@ -1127,7 +1132,7 @@ def on_message(client, userdata, msg):
                     logging.warning("Discarding active sensor: %s, in retained message", sensor)
                     continue
 
-                check(sensor)
+                check_zone(sensor)
 
             if "battery" in y:
                 if isinstance(y["battery"], int):
@@ -1139,7 +1144,7 @@ def on_message(client, userdata, msg):
                 state.status[f"sensor_{key}_linkquality"] = y["linkquality"] > 20
 
 
-def status_check():
+def status_check() -> None:
     while True:
         for key, device in (sensors.items() | alarm_panels.items()):
             if device.timeout == 0:
@@ -1159,7 +1164,7 @@ def status_check():
         time.sleep(1)
 
 
-def hc_ping():
+def hc_ping() -> None:
     hc_uuid = config.get("healthchecks", "uuid")
 
     if not hc_uuid:
@@ -1175,7 +1180,7 @@ def hc_ping():
         time.sleep(60)
 
 
-def serial_data():
+def serial_data() -> None:
     water_valve_switch = True
 
     while True:
@@ -1228,7 +1233,7 @@ def serial_data():
             state.publish()
 
 
-def door_open_warning():
+def door_open_warning() -> None:
     door_closed_time = time.time()
 
     while True:
@@ -1257,7 +1262,7 @@ def door_open_warning():
             time.sleep(1)
 
 
-def battery_test():
+def battery_test() -> None:
     with battery_test_lock:
         arduino.commands.put([2, True])  # Disable charger
         arduino.commands.join()
@@ -1275,7 +1280,7 @@ def battery_test():
         arduino.commands.join()
 
 
-def water_valve_test():
+def water_valve_test() -> None:
     with water_valve_test_lock:
         if arduino.data["outputs"][2] or water_alarm_lock.locked():
             logging.error("Can not run water valve test if valve is already active or water alarm is triggered")
@@ -1291,7 +1296,7 @@ def water_valve_test():
         logging.info("Water valve test completed")
 
 
-def check_reboot_required():
+def check_reboot_required() -> None:
     while True:
         reboot_is_required = os.path.isfile("/var/run/reboot-required")
         state.data["reboot_required"] = reboot_is_required
@@ -1326,7 +1331,7 @@ pushover = Pushover(
         config.get("pushover", "user")
         )
 
-arduino = Arduino(logging)
+arduino = Arduino()
 battery = Battery()
 
 # Since the Arduino resets when DTR is pulled low, the
@@ -1386,14 +1391,28 @@ if __name__ == "__main__":
 
     threading.Thread(target=check_reboot_required, args=(), daemon=True).start()
 
-    while True:
-        time.sleep(0.01)
+    input_active_counter: dict[str, int] = {}
 
-        for key, gpio_input in inputs.items():
-            state.zone(key, gpio_input.get())
+    while True:
+        time.sleep(0.01)  # Wait 10 ms
+
+        # This loop takes less than 100 micro seconds to complete
+        for input_key, gpio_input in inputs.items():
+            state.zone(input_key, gpio_input.get())
+
+            if input_key not in input_active_counter:
+                input_active_counter[input_key] = 0
 
             if gpio_input.is_true:
-                check(gpio_input)
+                input_active_counter[input_key] += 1
+
+                # Debounce zone inputs, must be active for 5 cycles = 50 ms
+                if input_active_counter[input_key] > 5:
+                    check_zone(gpio_input)
+            else:
+                if input_active_counter[input_key] > 0:
+                    rpi_gpio_log.debug("Zone: %s was active for %s cycles", gpio_input, input_active_counter[input_key])
+                input_active_counter[input_key] = 0
 
         if not triggered_lock.locked() and (outputs["siren1"].is_true or outputs["siren2"].is_true):
             logging.critical("Siren(s) on outside lock!")
