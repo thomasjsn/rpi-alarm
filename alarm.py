@@ -17,7 +17,7 @@ from typing import Optional
 
 from pushover import Pushover
 import hass_discovery as hass
-import healthchecks
+from healthchecks import HealthChecks
 from arduino import Arduino
 from battery import Battery
 
@@ -1164,8 +1164,9 @@ def status_check() -> None:
         time.sleep(1)
 
 
-def hc_ping() -> None:
-    hc_uuid = config.get("healthchecks", "uuid")
+def heartbeat_ping() -> None:
+    hc_uuid = config.get("healthchecks.uuid", "heartbeat", fallback=None)
+    hc_heartbeat = HealthChecks(hc_uuid)
 
     if not hc_uuid:
         logging.debug("Healthchecks UUID not found, aborting ping.")
@@ -1174,7 +1175,7 @@ def hc_ping() -> None:
     logging.info("Starting Healthchecks ping with UUID %s", hc_uuid)
 
     while True:
-        hc_status = healthchecks.ping(hc_uuid)
+        hc_status = hc_heartbeat.ping()
         state.status["healthchecks"] = hc_status
 
         time.sleep(60)
@@ -1264,14 +1265,19 @@ def door_open_warning() -> None:
 
 def battery_test() -> None:
     with battery_test_lock:
+        hc_battery_test = HealthChecks(config.get("healthchecks.uuid", "battery_test", fallback=None))
+
         arduino.commands.put([2, True])  # Disable charger
         arduino.commands.join()
+
+        hc_battery_test.start()
         start_time = time.time()
         battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
 
         while state.data["battery_level"] > 50:
             time.sleep(1)
 
+        hc_battery_test.stop()
         test_time = round(time.time() - start_time, 0)
         battery_log.info("Battery test completed at %s V and %s %%, took: %s",
                          arduino.data["voltage1"], state.data["battery_level"], datetime.timedelta(seconds=test_time))
@@ -1282,10 +1288,13 @@ def battery_test() -> None:
 
 def water_valve_test() -> None:
     with water_valve_test_lock:
+        hc_water_valve = HealthChecks(config.get("healthchecks.uuid", "water_valve_test", fallback=None))
+
         if arduino.data["outputs"][2] or water_alarm_lock.locked():
             logging.error("Can not run water valve test if valve is already active or water alarm is triggered")
             return
 
+        hc_water_valve.start()
         logging.info("Water valve test started")
 
         for valve_state in [True, False]:
@@ -1293,6 +1302,7 @@ def water_valve_test() -> None:
             arduino.commands.join()
             time.sleep(1)
 
+        hc_water_valve.stop()
         logging.info("Water valve test completed")
 
 
@@ -1382,7 +1392,7 @@ if __name__ == "__main__":
 
     threading.Thread(target=status_check, args=(), daemon=True).start()
 
-    threading.Thread(target=hc_ping, args=(), daemon=True).start()
+    threading.Thread(target=heartbeat_ping, args=(), daemon=True).start()
 
     threading.Thread(target=arduino.get_data, args=(), daemon=True).start()
     threading.Thread(target=serial_data, args=(), daemon=True).start()
