@@ -513,7 +513,6 @@ class StateData:
     battery_voltage: float = None
     config: dict[str, bool] = field(default_factory=dict)
     fault: bool = None
-    mains_power_ok: bool = None
     reboot_required: bool = None
     state: str = None
     tamper: bool = None
@@ -551,7 +550,7 @@ class State:
         #     }
         # }
 
-        self.data = StateData(
+        self.data: StateData = StateData(
             state=config.get("system", "state"),
             config={
                 "walk_test": config.getboolean("config", "walk_test", fallback=False),
@@ -892,7 +891,7 @@ def water_alarm() -> None:
         arduino.commands.put([4, True])  # Dishwasher relay (NC)
 
         # Keep in loop until manually reset
-        while not arduino.data["inputs"][4]:
+        while not arduino.data.inputs[4]:
             if math.floor(time.time() - water_alarm_time) % 30 == 0:
                 buzzer_signal(1, [0.5, 0.5])
                 buzzer_signal(2, [0.1, 0.2])
@@ -902,7 +901,7 @@ def water_alarm() -> None:
         logging.info("Leaving water alarm lock.")
 
         # Turn water back on if manual switch enabled
-        if arduino.data["inputs"][3]:
+        if arduino.data.inputs[3]:
             arduino.commands.put([3, False])  # Water valve relay
 
         arduino.commands.put([4, False])  # Dishwasher relay (NC)
@@ -1192,41 +1191,38 @@ def serial_data() -> None:
             print(json.dumps(data, indent=2, sort_keys=True))
 
         try:
-            state.data["temperature"] = data["temperature"]
-            state.status["cabinet_temp"] = data["temperature"] < 30
+            state.data["temperature"] = data.temperature
+            state.data["auxiliary_voltage"] = data.aux12_voltage
 
-            state.data["auxiliary_voltage"] = data["voltage2"]
-            state.data["mains_power_ok"] = data["voltage2"] > 12
+            state.data["battery_voltage"] = data.battery_voltage
+            state.data["battery_level"] = battery.level(data.battery_voltage)
+            state.data["battery_low"] = data.battery_voltage < 12
+            state.data["battery_charging"] = data.battery_voltage > 13.5 and not data.outputs[1]
 
-            state.data["battery_voltage"] = data["voltage1"]
-            state.data["battery_level"] = battery.level(data["voltage1"])
-            state.data["battery_low"] = data["voltage1"] < 12
-            state.data["battery_charging"] = (data["voltage1"] > 13 and state.data["mains_power_ok"]
-                                              and not data["outputs"][1])
+            state.status["auxiliary_voltage"] = data.aux12_voltage > 12
+            state.status["battery_voltage"] = data.battery_voltage > 12
+            state.status["cabinet_temp"] = data.temperature < 30
 
-            state.status["battery_voltage"] = data["voltage1"] > 12
-            state.status["mains_power"] = data["voltage2"] > 12
-
-            state.data["water_valve"] = not data["outputs"][2]
+            state.data["water_valve"] = not data.outputs[2]
 
         except ValueError:
             logging.error("ValueError on data from Arduino device")
 
         # state.status["siren1_output"] = outputs["siren1"].get() == data["inputs"][1]
         # state.status["siren2_output"] = outputs["siren2"].get() == data["inputs"][2]
-        state.status["siren_block"] = data["outputs"][0] is False
+        state.status["siren_block"] = data.outputs[0] is False
 
         state.data["battery_test_running"] = battery_test_lock.locked()
 
-        if data["outputs"][4] != state.data["config"]["aux_output1"]:
+        if data.outputs[4] != state.data["config"]["aux_output1"]:
             arduino.commands.put([5, state.data["config"]["aux_output1"]])
-        if data["outputs"][5] != state.data["config"]["aux_output2"]:
+        if data.outputs[5] != state.data["config"]["aux_output2"]:
             arduino.commands.put([6, state.data["config"]["aux_output2"]])
 
-        if data["inputs"][3] != water_valve_switch and not water_alarm_lock.locked():
-            arduino.commands.put([3, not data["inputs"][3]])
-            water_valve_switch = data["inputs"][3]
-            logging.info("Water valve switch changed state: %s", data["inputs"][3])
+        if data.inputs[3] != water_valve_switch and not water_alarm_lock.locked():
+            arduino.commands.put([3, not data.inputs[3]])
+            water_valve_switch = data.inputs[3]
+            logging.info("Water valve switch changed state: %s", data.inputs[3])
 
         arduino.data_ready.clear()
 
@@ -1272,7 +1268,7 @@ def battery_test() -> None:
 
         hc_battery_test.start()
         start_time = time.time()
-        battery_log.info("Battery test started at %s V", arduino.data["voltage1"])
+        battery_log.info("Battery test started at %s V", arduino.data.battery_voltage)
 
         while state.data["battery_level"] > 50:
             time.sleep(1)
@@ -1280,7 +1276,8 @@ def battery_test() -> None:
         hc_battery_test.stop()
         test_time = round(time.time() - start_time, 0)
         battery_log.info("Battery test completed at %s V and %s %%, took: %s",
-                         arduino.data["voltage1"], state.data["battery_level"], datetime.timedelta(seconds=test_time))
+                         arduino.data.battery_voltage, state.data["battery_level"],
+                         datetime.timedelta(seconds=test_time))
         pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
         arduino.commands.put([2, False])  # Re-enable charger
         arduino.commands.join()
@@ -1290,7 +1287,7 @@ def water_valve_test() -> None:
     with water_valve_test_lock:
         hc_water_valve = HealthChecks(config.get("healthchecks.uuid", "water_valve_test", fallback=None))
 
-        if arduino.data["outputs"][2] or water_alarm_lock.locked():
+        if arduino.data.outputs[2] or water_alarm_lock.locked():
             logging.error("Can not run water valve test if valve is already active or water alarm is triggered")
             return
 

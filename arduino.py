@@ -3,12 +3,13 @@ import time
 import queue
 import threading
 import logging
+from dataclasses import dataclass, field
 
 '''
 Inputs:
 1. N/C
-2. Siren relay
-3. Siren actual
+2. Siren relay (used internally for siren block)
+3. Siren actual (after indoor siren and block relays)
 4. Water valve switch
 5. Water alarm reset button
 
@@ -27,15 +28,24 @@ Meaning output 1 is read as output[0] but changed with "o,1,x".
 '''
 
 
+@dataclass
+class ArduinoData:
+    battery_voltage: float = None
+    aux12_voltage: float = None
+    temperature: float = None
+    inputs: list[bool] = field(default_factory=list)
+    outputs: list[bool] = field(default_factory=list)
+
+
 class Arduino:
     def __init__(self):
-        self.data = {}
-        self.commands = queue.Queue()
-        self.voltage1 = []
-        self.voltage2 = []
-        self.temperature = []
-        self.timestamp = time.time()
-        self.data_ready = threading.Event()
+        self.data: ArduinoData = ArduinoData()
+        self.commands: queue.Queue = queue.Queue()
+        self.voltage1: list[float] = []
+        self.voltage2: list[float] = []
+        self.temperature: list[float] = []
+        self.timestamp: float = time.time()
+        self.data_ready: threading.Event = threading.Event()
 
     def get_data(self) -> None:
         with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as ser:
@@ -72,15 +82,12 @@ class Arduino:
                 if len(self.temperature) > ai_samples:
                     self.temperature.pop(0)
 
-                data = {
-                    "voltage1": round(sum(self.voltage1) / len(self.voltage1), 2),
-                    "voltage2": round(sum(self.voltage2) / len(self.voltage2), 2),
-                    "temperature": round(sum(self.temperature) / len(self.temperature), 2),
-                    "inputs": [not bool(int(received[3]) & (1 << n)) for n in range(5)],
-                    "outputs": [bool(int(received[4]) & (1 << n)) for n in range(7)]
-                }
+                self.data.battery_voltage = round(sum(self.voltage1) / len(self.voltage1), 2)
+                self.data.aux12_voltage = round(sum(self.voltage2) / len(self.voltage2), 2)
+                self.data.temperature = round(sum(self.temperature) / len(self.temperature), 2)
+                self.data.inputs = [not bool(int(received[3]) & (1 << n)) for n in range(5)]
+                self.data.outputs = [bool(int(received[4]) & (1 << n)) for n in range(7)]
 
-                self.data = data
                 self.timestamp = time.time()
                 self.data_ready.set()
                 # print(time.time() - start_time)

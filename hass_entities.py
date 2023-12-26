@@ -165,14 +165,6 @@ entities = [
         category="diagnostic"
     ),
     Entity(
-        id="mains_power",
-        data_key="mains_power_ok",
-        component="binary_sensor",
-        dev_class="power",
-        label="Mains power",
-        category="diagnostic"
-    ),
-    Entity(
         id="zigbee_bridge",
         data_key="zigbee_bridge",
         component="binary_sensor",
