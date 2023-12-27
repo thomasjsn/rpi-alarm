@@ -93,9 +93,6 @@ class Input(Zone):
     def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
         super().__init__(key, label, dev_class, arm_modes)
         self.gpio = gpio
-        # self.label = label
-        # self.dev_class = dev_class
-        # self.arm_modes = arm_modes
 
     def __str__(self):
         return self.label
@@ -145,9 +142,6 @@ class Sensor(Zone):
         self.topic = topic
         self.field = field
         self.value = value
-        # self.label = label
-        # self.dev_class = dev_class
-        # self.arm_modes = arm_modes
         self.timeout = timeout
         self.timestamp = time.time()
 
@@ -221,7 +215,7 @@ class AlarmPanel:
 
         logging.debug("Sending state: %s to alarm panel %s", self.set_states[alarm_state], self.label)
         data = {"arm_mode": {"mode": self.set_states[alarm_state]}}
-        client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
+        mqtt_client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
 
 
 inputs = {
@@ -574,8 +568,8 @@ class State:
         return json.dumps(self.data.__dict__)
 
     def publish(self) -> None:
-        client.publish("home/alarm_test/availability", "online", retain=True)
-        client.publish('home/alarm_test', self.json(), retain=True)
+        mqtt_client.publish("home/alarm_test/availability", "online", retain=True)
+        mqtt_client.publish('home/alarm_test', self.json(), retain=True)
 
         if args.print_payload:
             print(json.dumps(self.data.__dict__, indent=2, sort_keys=True))
@@ -956,7 +950,7 @@ def check_zone(zone: Zone) -> None:
 
 
 # The callback for when the client receives a CONNACK response from the server.
-def on_connect(client, userdata, flags, rc) -> None:
+def on_connect(client: mqtt.Client, userdata, flags:  dict[str, int], rc: int) -> None:
     logging.info("Connected to MQTT broker with result code %s", rc)
 
     # Subscribing in on_connect() means that if we lose the connection and
@@ -982,13 +976,13 @@ def on_connect(client, userdata, flags, rc) -> None:
     if rc == 0:
         client.connected_flag = True
         state.status["mqtt_connected"] = True
-        hass.discovery(client, inputs, sensors, zone_timers)
+        hass.discovery(client, zones, zone_timers)
     else:
         client.bad_connection_flag = True
         print("Bad connection, returned code: ", str(rc))
 
 
-def on_disconnect(client, userdata, rc) -> None:
+def on_disconnect(client: mqtt.Client, userdata, rc: int) -> None:
     logging.warning("Disconnecting reason %s", rc)
     client.connected_flag = False
     state.status["mqtt_connected"] = False
@@ -996,7 +990,7 @@ def on_disconnect(client, userdata, rc) -> None:
 
 
 # The callback for when a PUBLISH message is received from the server.
-def on_message(client, userdata, msg) -> None:
+def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
     logging.debug("Received message: %s %s", msg.topic, msg.payload.decode('utf-8'))
 
     if msg.payload.decode('utf-8') == "":
@@ -1082,11 +1076,11 @@ def on_message(client, userdata, msg) -> None:
             if "battery" in y:
                 if isinstance(y["battery"], int):
                     # logging.debug("Found battery level %s on panel %s", y["battery"], panel)
-                    state.status[f"panel_{key}_battery"] = y["battery"] > 20
+                    state.status[f"panel_{key}_battery"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
                 # logging.debug("Found link quality %s on panel %s", y["linkquality"], panel)
-                state.status[f"panel_{key}_linkquality"] = y["linkquality"] > 20
+                state.status[f"panel_{key}_linkquality"] = int(y["linkquality"]) > 20
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1136,11 +1130,11 @@ def on_message(client, userdata, msg) -> None:
             if "battery" in y:
                 if isinstance(y["battery"], int):
                     # logging.debug("Found battery level %s on sensor %s", y["battery"], sensor)
-                    state.status[f"sensor_{key}_battery"] = y["battery"] > 20
+                    state.status[f"sensor_{key}_battery"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
                 # logging.debug("Found link quality %s on sensor %s", y["linkquality"], sensor)
-                state.status[f"sensor_{key}_linkquality"] = y["linkquality"] > 20
+                state.status[f"sensor_{key}_linkquality"] = int(y["linkquality"]) > 20
 
 
 def status_check() -> None:
@@ -1314,16 +1308,16 @@ def check_reboot_required() -> None:
         time.sleep(60*60)
 
 
-client = mqtt.Client(config.get("mqtt", "client_id"))
-client.on_connect = on_connect
-client.on_disconnect = on_disconnect
-client.on_message = on_message
-client.will_set("home/alarm_test/availability", "offline")
+mqtt_client = mqtt.Client(config.get("mqtt", "client_id"))
+mqtt_client.on_connect = on_connect
+mqtt_client.on_disconnect = on_disconnect
+mqtt_client.on_message = on_message
+mqtt_client.will_set("home/alarm_test/availability", "offline")
 
 for attempt in range(5):
     try:
-        client.connect(config.get("mqtt", "host"))
-        client.loop_start()
+        mqtt_client.connect(config.get("mqtt", "host"))
+        mqtt_client.loop_start()
     except OSError:
         logging.error("Unable to connect MQTT, retry... (%d)", attempt)
         time.sleep(attempt*3)

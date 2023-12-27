@@ -1,7 +1,7 @@
 import time
 import threading
 import http.client
-import urllib
+import urllib.parse
 
 
 class Pushover:

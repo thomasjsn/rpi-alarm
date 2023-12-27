@@ -3,7 +3,7 @@ import paho.mqtt.client as mqtt
 from hass_entities import entities
 
 
-def discovery(client: mqtt.Client, inputs, sensors, zone_timers) -> None:
+def discovery(client: mqtt.Client, zones, zone_timers) -> None:
     payload_common = {
         "state_topic": "home/alarm_test",
         "enabled_by_default": True,
@@ -78,26 +78,13 @@ def discovery(client: mqtt.Client, inputs, sensors, zone_timers) -> None:
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{entity.id}/config',
                        json.dumps(payload), retain=True)
 
-    for key, input in inputs.items():
-        payload = payload_common | {
-            "name": input.label,
-            "unique_id": "rpi_alarm_" + key,
-            "device_class": input.dev_class.value,
-            "value_template": "{{ value_json.zones." + key + " }}",
-            "payload_off": False,
-            "payload_on": True,
-        }
-
-        client.publish(f'homeassistant/binary_sensor/rpi_alarm/{key}/config',
-                       json.dumps(payload), retain=True)
-
-    for key, sensor in sensors.items():
-        if sensor.dev_class.value is None:
+    for key, zone in zones.items():
+        if zone.dev_class.value is None:
             continue
         payload = payload_common | {
-            "name": sensor.label,
+            "name": zone.label,
             "unique_id": "rpi_alarm_" + key,
-            "device_class": sensor.dev_class.value,
+            "device_class": zone.dev_class.value,
             "value_template": "{{ value_json.zones." + key + " }}",
             "payload_off": False,
             "payload_on": True,
