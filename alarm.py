@@ -950,7 +950,7 @@ def check_zone(zone: Zone) -> None:
 
 
 # The callback for when the client receives a CONNACK response from the server.
-def on_connect(client: mqtt.Client, userdata, flags:  dict[str, int], rc: int) -> None:
+def on_connect(client: mqtt.Client, userdata, flags: dict[str, int], rc: int) -> None:
     logging.info("Connected to MQTT broker with result code %s", rc)
 
     # Subscribing in on_connect() means that if we lose the connection and
