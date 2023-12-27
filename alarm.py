@@ -330,6 +330,16 @@ sensors = {
         arm_modes=[ArmMode.Away],
         timeout=3900
     ),
+    "motion2": Sensor(
+        key="motion2",
+        topic="zigbee2mqtt/livingroom_motion",
+        field="occupancy",
+        value=SensorValue.Truthy,
+        label="Living room motion",
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Notify],
+        timeout=3900
+    ),
     "motion3": Sensor(
         key="motion3",
         topic="hass2mqtt/binary_sensor/entreen_motion/state",
@@ -338,6 +348,16 @@ sensors = {
         label="Entrance motion",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.AwayDelayed]
+    ),
+    "motion4": Sensor(
+        key="motion4",
+        topic="zigbee2mqtt/0x54ef441000948519",
+        field="occupancy",
+        value=SensorValue.Truthy,
+        label="2nd floor hallway motion",
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Notify],
+        timeout=3900
     ),
     "garage_motion1": Sensor(
         key="garage_motion1",
@@ -422,7 +442,7 @@ codes = dict(config.items("codes"))
 zone_timers = {
     "hallway_motion": ZoneTimer(
         key="hallway_motion",
-        zones=["zone01", "motion2"],
+        zones=["zone01", "motion4"],
         # zone_value=True,
         label="Hallway motion",
         blocked_state=["armed_away"]
