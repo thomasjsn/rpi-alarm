@@ -65,6 +65,12 @@ class AlarmState(Enum):
     Arming = "arming"
 
 
+class AlarmAction(Enum):
+    Disarm = auto()
+    ArmHome = auto()
+    ArmAway = auto()
+
+
 class SensorValue(Enum):
     Truthy = True
     Falsy = False
@@ -193,8 +199,8 @@ class ZoneTimer:
 
 
 class AlarmPanel:
-    def __init__(self, topic: str, fields: dict[str, str], actions: dict[str, str], label: str,
-                 set_states: dict[str, str] = None, timeout: int = 0):
+    def __init__(self, topic: str, fields: dict[str, str], actions: dict[AlarmAction, str], label: str,
+                 set_states: dict[AlarmState, str] = None, timeout: int = 0):
         self.topic = topic
         self.fields = fields
         self.actions = actions
@@ -209,7 +215,7 @@ class AlarmPanel:
     def __repr__(self):
         return f"p:{self.label}"
 
-    def set(self, alarm_state):
+    def set(self, alarm_state: AlarmState):
         if alarm_state not in self.set_states:
             return
 
@@ -434,28 +440,40 @@ alarm_panels = {
     "home_assistant": AlarmPanel(
         topic="home/alarm_test/set",
         fields={"action": "action", "code": "code"},
-        actions={"disarm": "DISARM", "arm_away": "ARM_AWAY", "arm_home": "ARM_HOME"},
+        actions={
+            AlarmAction.Disarm: "DISARM",
+            AlarmAction.ArmAway: "ARM_AWAY",
+            AlarmAction.ArmHome: "ARM_HOME"
+        },
         label="Home Assistant"
     ),
     "climax": AlarmPanel(
         topic="zigbee2mqtt/Alarm panel",
         fields={"action": "action", "code": "action_code"},
-        actions={"disarm": "disarm", "arm_away": "arm_all_zones", "arm_home": "arm_day_zones"},
+        actions={
+            AlarmAction.Disarm: "disarm",
+            AlarmAction.ArmAway: "arm_all_zones",
+            AlarmAction.ArmHome: "arm_day_zones"
+        },
         label="Climax",
         timeout=2100
     ),
     "develco1": AlarmPanel(
         topic="zigbee2mqtt/Panel entrance",
         fields={"action": "action", "code": "action_code"},
-        actions={"disarm": "disarm", "arm_away": "arm_all_zones", "arm_home": "arm_day_zones"},
+        actions={
+            AlarmAction.Disarm: "disarm",
+            AlarmAction.ArmAway: "arm_all_zones",
+            AlarmAction.ArmHome: "arm_day_zones"
+        },
         label="Develco entrance",
         set_states={
-            "disarmed": "disarm",
-            "armed_home": "arm_day_zones",
-            "armed_away": "arm_all_zones",
-            "triggered": "in_alarm",
-            "pending": "entry_delay",
-            "arming": "exit_delay"
+            AlarmState.Disarmed: "disarm",
+            AlarmState.ArmedHome: "arm_day_zones",
+            AlarmState.ArmedAway: "arm_all_zones",
+            AlarmState.Triggered: "in_alarm",
+            AlarmState.Pending: "entry_delay",
+            AlarmState.Arming: "exit_delay"
         },
         timeout=900
     )
@@ -607,7 +625,7 @@ class State:
                     config.write(configfile)
 
             for panel in [v for k, v in alarm_panels.items() if v.set_states]:
-                panel.set(alarm_state)
+                panel.set(AlarmState(alarm_state))
 
     def zone(self, zone_key: str, value: bool) -> None:
         zone = zones[zone_key]
@@ -1097,13 +1115,13 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                 user = codes[code]
                 logging.info("Panel action, %s: %s by %s", panel, action, user)
 
-                if action == panel.actions["disarm"]:
+                if action == panel.actions[AlarmAction.Disarm]:
                     threading.Thread(target=disarmed, args=(user,)).start()
 
-                elif action == panel.actions["arm_away"]:
+                elif action == panel.actions[AlarmAction.ArmAway]:
                     threading.Thread(target=arming, args=(user,)).start()
 
-                elif action == panel.actions["arm_home"]:
+                elif action == panel.actions[AlarmAction.ArmHome]:
                     threading.Thread(target=armed_home, args=(user,)).start()
 
                 else:
