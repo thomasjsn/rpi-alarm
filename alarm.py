@@ -66,10 +66,13 @@ class AlarmState(Enum):
     Arming = "arming"
 
 
-class AlarmAction(Enum):
+class AlarmPanelAction(Enum):
     Disarm = auto()
     ArmHome = auto()
     ArmAway = auto()
+    InvalidCode = auto()
+    NotReady = auto()
+    AlreadyDisarmed = auto()
 
 
 class SensorValue(Enum):
@@ -200,7 +203,7 @@ class ZoneTimer:
 
 
 class AlarmPanel:
-    def __init__(self, topic: str, fields: dict[str, str], actions: dict[AlarmAction, str], label: str,
+    def __init__(self, topic: str, fields: dict[str, str], actions: dict[AlarmPanelAction, str], label: str,
                  set_states: dict[AlarmState, str] = None, timeout: int = 0):
         self.topic = topic
         self.fields = fields
@@ -222,6 +225,14 @@ class AlarmPanel:
 
         logging.debug("Sending state: %s to alarm panel %s", self.set_states[alarm_state], self.label)
         data = {"arm_mode": {"mode": self.set_states[alarm_state]}}
+        mqtt_client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
+
+    def validate(self, transaction: str, alarm_action: AlarmPanelAction):
+        if transaction is None or alarm_action not in self.actions:
+            return
+
+        logging.debug("Sending verification: %s to alarm panel %s", self.actions[alarm_action], self.label)
+        data = {"arm_mode": {"transaction": int(transaction), "mode": self.actions[alarm_action]}}
         mqtt_client.publish(f"{self.topic}/set", json.dumps(data), retain=False)
 
 
@@ -416,6 +427,15 @@ sensors = {
         dev_class=DevClass.Generic,
         arm_modes=[ArmMode.Direct]
     ),
+    "emergency3": Sensor(
+        key="emergency3",
+        topic="zigbee2mqtt/0x0015bc00430003ca",
+        field="action",
+        value=SensorValue.Emergency,
+        label="Emergency button 3",
+        dev_class=DevClass.Generic,
+        arm_modes=[ArmMode.Direct]
+    ),
     "fire_test": Sensor(
         key="fire_test",
         topic="home/alarm_test/test/fire",
@@ -462,9 +482,9 @@ alarm_panels = {
         topic="home/alarm_test/set",
         fields={"action": "action", "code": "code"},
         actions={
-            AlarmAction.Disarm: "DISARM",
-            AlarmAction.ArmAway: "ARM_AWAY",
-            AlarmAction.ArmHome: "ARM_HOME"
+            AlarmPanelAction.Disarm: "DISARM",
+            AlarmPanelAction.ArmAway: "ARM_AWAY",
+            AlarmPanelAction.ArmHome: "ARM_HOME"
         },
         label="Home Assistant"
     ),
@@ -472,9 +492,9 @@ alarm_panels = {
         topic="zigbee2mqtt/Alarm panel",
         fields={"action": "action", "code": "action_code"},
         actions={
-            AlarmAction.Disarm: "disarm",
-            AlarmAction.ArmAway: "arm_all_zones",
-            AlarmAction.ArmHome: "arm_day_zones"
+            AlarmPanelAction.Disarm: "disarm",
+            AlarmPanelAction.ArmAway: "arm_all_zones",
+            AlarmPanelAction.ArmHome: "arm_day_zones"
         },
         label="Climax",
         timeout=2100
@@ -483,11 +503,36 @@ alarm_panels = {
         topic="zigbee2mqtt/Panel entrance",
         fields={"action": "action", "code": "action_code"},
         actions={
-            AlarmAction.Disarm: "disarm",
-            AlarmAction.ArmAway: "arm_all_zones",
-            AlarmAction.ArmHome: "arm_day_zones"
+            AlarmPanelAction.Disarm: "disarm",
+            AlarmPanelAction.ArmAway: "arm_all_zones",
+            AlarmPanelAction.ArmHome: "arm_day_zones",
+            AlarmPanelAction.InvalidCode: "invalid_code",
+            AlarmPanelAction.NotReady: "not_ready",
+            AlarmPanelAction.AlreadyDisarmed: "not_ready"
         },
         label="Develco entrance",
+        set_states={
+            AlarmState.Disarmed: "disarm",
+            AlarmState.ArmedHome: "arm_day_zones",
+            AlarmState.ArmedAway: "arm_all_zones",
+            AlarmState.Triggered: "in_alarm",
+            AlarmState.Pending: "entry_delay",
+            AlarmState.Arming: "exit_delay"
+        },
+        timeout=900
+    ),
+    "develco2": AlarmPanel(
+        topic="zigbee2mqtt/0x0015bc00430003ca",
+        fields={"action": "action", "code": "action_code"},
+        actions={
+            AlarmPanelAction.Disarm: "disarm",
+            AlarmPanelAction.ArmAway: "arm_all_zones",
+            AlarmPanelAction.ArmHome: "arm_day_zones",
+            AlarmPanelAction.InvalidCode: "invalid_code",
+            AlarmPanelAction.NotReady: "not_ready",
+            AlarmPanelAction.AlreadyDisarmed: "not_ready"
+        },
+        label="Develco bedroom",
         set_states={
             AlarmState.Disarmed: "disarm",
             AlarmState.ArmedHome: "arm_day_zones",
@@ -1127,6 +1172,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
             code = str(y.get(panel.fields["code"])).lower()
+            action_transaction = y.get("action_transaction")
 
             if msg.retain == 1:
                 logging.warning("Discarding action: %s, in retained message from alarm panel: %s", action, panel)
@@ -1137,16 +1183,25 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
             if code in codes:
                 user = codes[code]
-                logging.info("Panel action, %s: %s by %s", panel, action, user)
+                logging.info("Panel action, %s: %s by %s (%s)", panel, action, user, action_transaction)
 
-                if action == panel.actions[AlarmAction.Disarm]:
-                    threading.Thread(target=disarmed, args=(user,)).start()
+                if action == panel.actions[AlarmPanelAction.Disarm]:
+                    if state.system == "disarmed":
+                        panel.validate(action_transaction, AlarmPanelAction.AlreadyDisarmed)
+                    else:
+                        panel.validate(action_transaction, AlarmPanelAction.Disarm)
+                        threading.Thread(target=disarmed, args=(user,)).start()
 
-                elif action == panel.actions[AlarmAction.ArmAway]:
+                elif action == panel.actions[AlarmPanelAction.ArmAway]:
+                    panel.validate(action_transaction, AlarmPanelAction.ArmAway)
                     threading.Thread(target=arming, args=(user,)).start()
 
-                elif action == panel.actions[AlarmAction.ArmHome]:
-                    threading.Thread(target=armed_home, args=(user,)).start()
+                elif action == panel.actions[AlarmPanelAction.ArmHome]:
+                    if any([o.get() for o in home_zones]):
+                        panel.validate(action_transaction, AlarmPanelAction.NotReady)
+                    else:
+                        panel.validate(action_transaction, AlarmPanelAction.ArmHome)
+                        threading.Thread(target=armed_home, args=(user,)).start()
 
                 else:
                     logging.warning("Unknown action: %s, from alarm panel: %s", action, panel)
@@ -1154,7 +1209,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             elif code is not None:
                 state.code_attempts += 1
                 logging.error("Bad code: %s, attempt: %d", code, state.code_attempts)
-                buzzer_signal(1, [1, 0])
+                # buzzer_signal(1, [1, 0])
+                panel.validate(action_transaction, AlarmPanelAction.InvalidCode)
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic and sensor.field in y:
