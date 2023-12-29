@@ -2,6 +2,7 @@ import time
 import json
 import threading
 import logging
+import logging.handlers
 import datetime
 import paho.mqtt.client as mqtt
 import RPi.GPIO as GPIO
@@ -503,14 +504,17 @@ logging_format = "%(asctime)s - %(levelname)s: %(message)s"
 logging.basicConfig(format=logging_format, level=logging.DEBUG, datefmt="%H:%M:%S")
 
 battery_log = logging.getLogger("battery")
-battery_log_handler = logging.FileHandler('battery.log')
+battery_log_handler = logging.FileHandler('logs/battery.log')
 battery_log_handler.setFormatter(logging.Formatter(logging_format))
 battery_log.addHandler(battery_log_handler)
 
 rpi_gpio_log = logging.getLogger("rpi_gpio")
-rpi_gpio_log_handler = logging.FileHandler('rpi_gpio.log')
-rpi_gpio_log_handler.setFormatter(logging.Formatter(logging_format))
-rpi_gpio_log.addHandler(rpi_gpio_log_handler)
+rpi_gpio_log_file_handler = logging.handlers.RotatingFileHandler('logs/rpi_gpio.log',
+                                                                 maxBytes=200*1000, backupCount=5)
+rpi_gpio_log_file_handler.setFormatter(logging.Formatter(logging_format))
+rpi_gpio_log_mem_handler = logging.handlers.MemoryHandler(50, target=rpi_gpio_log_file_handler)
+rpi_gpio_log_mem_handler.setFormatter(logging.Formatter(logging_format))
+rpi_gpio_log.addHandler(rpi_gpio_log_mem_handler)
 
 if args.log_level:
     logging.getLogger().setLevel(args.log_level)
