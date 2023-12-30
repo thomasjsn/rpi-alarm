@@ -79,7 +79,7 @@ class SensorValue(Enum):
     Truthy = True
     Falsy = False
     On = "on"
-    Panic = "panic"
+    # Panic = "panic"
     Emergency = "emergency"
 
 
@@ -349,7 +349,7 @@ sensors = {
         value=SensorValue.Truthy,
         label="Living room motion",
         dev_class=DevClass.Motion,
-        arm_modes=[ArmMode.Notify],
+        arm_modes=[ArmMode.Away],
         timeout=3900
     ),
     "motion3": Sensor(
@@ -368,8 +368,17 @@ sensors = {
         value=SensorValue.Truthy,
         label="2nd floor hallway motion",
         dev_class=DevClass.Motion,
-        arm_modes=[ArmMode.Notify],
+        arm_modes=[ArmMode.Away],
         timeout=3900
+    ),
+    "motion5": Sensor(
+        key="motion5",
+        topic="hass2mqtt/binary_sensor/hue_motion_sensor_1_motion/state",
+        field="value",
+        value=SensorValue.On,
+        label="Bathroom motion",
+        dev_class=DevClass.Motion,
+        arm_modes=[]
     ),
     "garage_motion1": Sensor(
         key="garage_motion1",
@@ -400,39 +409,39 @@ sensors = {
         arm_modes=[ArmMode.Water],
         timeout=3600
     ),
-    "panic": Sensor(
-        key="panic",
-        topic="zigbee2mqtt/Alarm panel",
-        field="action",
-        value=SensorValue.Panic,
-        label="Panic button",
-        dev_class=DevClass.Generic,
-        arm_modes=[ArmMode.Direct]
-    ),
+    # "panic": Sensor(
+    #     key="panic",
+    #     topic="zigbee2mqtt/Alarm panel",
+    #     field="action",
+    #     value=SensorValue.Panic,
+    #     label="Panic button",
+    #     dev_class=DevClass.Generic,
+    #     arm_modes=[ArmMode.Direct]
+    # ),
+    # "emergency1": Sensor(
+    #     key="emergency1",
+    #     topic="zigbee2mqtt/Alarm panel",
+    #     field="action",
+    #     value=SensorValue.Emergency,
+    #     label="Emergency button 1",
+    #     dev_class=DevClass.Generic,
+    #     arm_modes=[ArmMode.Direct]
+    # ),
     "emergency1": Sensor(
         key="emergency1",
-        topic="zigbee2mqtt/Alarm panel",
+        topic="zigbee2mqtt/Panel entrance",
         field="action",
         value=SensorValue.Emergency,
-        label="Emergency button 1",
+        label="Emergency button entrance",
         dev_class=DevClass.Generic,
         arm_modes=[ArmMode.Direct]
     ),
     "emergency2": Sensor(
         key="emergency2",
-        topic="zigbee2mqtt/Panel entrance",
-        field="action",
-        value=SensorValue.Emergency,
-        label="Emergency button 2",
-        dev_class=DevClass.Generic,
-        arm_modes=[ArmMode.Direct]
-    ),
-    "emergency3": Sensor(
-        key="emergency3",
         topic="zigbee2mqtt/0x0015bc00430003ca",
         field="action",
         value=SensorValue.Emergency,
-        label="Emergency button 3",
+        label="Emergency button bedroom",
         dev_class=DevClass.Generic,
         arm_modes=[ArmMode.Direct]
     ),
@@ -837,12 +846,12 @@ def siren(seconds: int, zone: Zone, current_state: str) -> bool:
                 time.sleep(0.3)
             time.sleep(1)
 
-        elif zone in [zones["emergency1"], zones["emergency2"]]:
-            outputs["siren1"].set(True)
-            time.sleep(0.5)
-            outputs["siren1"].set(False)
-            time.sleep(10)
-            break
+        # elif zone in [zones["emergency1"], zones["emergency2"]]:
+        #     outputs["siren1"].set(True)
+        #     time.sleep(0.5)
+        #     outputs["siren1"].set(False)
+        #     time.sleep(10)
+        #     break
 
         elif zone in water_zones:
             outputs["siren1"].set(True)
@@ -854,7 +863,7 @@ def siren(seconds: int, zone: Zone, current_state: str) -> bool:
             outputs["siren1"].set(True)
             # outputs["beacon"].set(True)
 
-            if (time.time()-start_time) > (seconds/3) and len(state.zones_open) > 1:
+            if ((time.time()-start_time) > (seconds/3) and len(state.zones_open) > 1) or zone in direct_zones:
                 outputs["siren2"].set(True)
             time.sleep(1)
 
@@ -1208,9 +1217,10 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
             elif code is not None:
                 state.code_attempts += 1
-                logging.error("Bad code: %s, attempt: %d", code, state.code_attempts)
+                logging.warning("Invalid code: %s, attempt: %d", code, state.code_attempts)
                 # buzzer_signal(1, [1, 0])
                 panel.validate(action_transaction, AlarmPanelAction.InvalidCode)
+                pushover.push(f"Invalid code entered on alarm panel: {panel}")
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic and sensor.field in y:
