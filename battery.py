@@ -2,18 +2,19 @@ from scipy.interpolate import interp1d
 
 
 class Battery:
+    # Source: https://www.rebel-cell.com/knowledge-base/battery-capacity/
     capacity_voltage = {
-        100: 12.89,
-        90: 12.78,
-        80: 12.65,
-        70: 12.51,
-        60: 12.41,
-        50: 12.23,
-        40: 12.11,
-        30: 11.96,
-        20: 11.81,
-        10: 11.70,
-        0: 11.63
+        100: 12.7,
+        90: 12.5,
+        80: 12.42,
+        70: 12.32,
+        60: 12.2,
+        50: 12.06,
+        40: 11.9,
+        30: 11.75,
+        20: 11.58,
+        10: 11.31,
+        0: 10.5
     }
 
     interpolate_levels = interp1d(list(capacity_voltage.keys()), list(capacity_voltage.values()), 'cubic')

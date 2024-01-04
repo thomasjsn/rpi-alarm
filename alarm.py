@@ -1299,7 +1299,7 @@ def serial_data() -> None:
             state.data["battery_voltage"] = data.battery_voltage
             state.data["battery_level"] = battery.level(data.battery_voltage)
             state.data["battery_low"] = data.battery_voltage < 12
-            state.data["battery_charging"] = data.battery_voltage > 13.5 and not data.outputs[1]
+            state.data["battery_charging"] = data.battery_voltage > 13 and not data.outputs[1]
 
             state.status["auxiliary_voltage"] = data.aux12_voltage > 12
             state.status["battery_voltage"] = data.battery_voltage > 12
