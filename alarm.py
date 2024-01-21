@@ -344,7 +344,7 @@ sensors = {
     ),
     "motion2": Sensor(
         key="motion2",
-        topic="zigbee2mqtt/livingroom_motion",
+        topic="zigbee2mqtt/Motion living room",
         field="occupancy",
         value=SensorValue.Truthy,
         label="Living room motion",
@@ -363,7 +363,7 @@ sensors = {
     ),
     "motion4": Sensor(
         key="motion4",
-        topic="zigbee2mqtt/0x54ef441000948519",
+        topic="zigbee2mqtt/Motion 2nd floor hallway",
         field="occupancy",
         value=SensorValue.Truthy,
         label="2nd floor hallway motion",
@@ -379,6 +379,16 @@ sensors = {
         label="Bathroom motion",
         dev_class=DevClass.Motion,
         arm_modes=[]
+    ),
+    "motion6": Sensor(
+        key="motion6",
+        topic="zigbee2mqtt/Motion master bedroom",
+        field="occupancy",
+        value=SensorValue.Truthy,
+        label="Master bedroom motion",
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Away],
+        timeout=3900
     ),
     "garage_motion1": Sensor(
         key="garage_motion1",
@@ -405,6 +415,16 @@ sensors = {
         field="water_leak",
         value=SensorValue.Truthy,
         label="Kitchen sink leak",
+        dev_class=DevClass.Moisture,
+        arm_modes=[ArmMode.Water],
+        timeout=3600
+    ),
+    "water_leak3": Sensor(
+        key="water_leak3",
+        topic="zigbee2mqtt/Water tap hatch",
+        field="water_leak",
+        value=SensorValue.Truthy,
+        label="Outdoor tap hatch leak",
         dev_class=DevClass.Moisture,
         arm_modes=[ArmMode.Water],
         timeout=3600
@@ -519,7 +539,7 @@ alarm_panels = {
             AlarmPanelAction.NotReady: "not_ready",
             AlarmPanelAction.AlreadyDisarmed: "not_ready"
         },
-        label="Develco entrance",
+        label="Entrance alarm panel",
         set_states={
             AlarmState.Disarmed: "disarm",
             AlarmState.ArmedHome: "arm_day_zones",
@@ -531,7 +551,7 @@ alarm_panels = {
         timeout=900
     ),
     "develco2": AlarmPanel(
-        topic="zigbee2mqtt/0x0015bc00430003ca",
+        topic="zigbee2mqtt/Panel master bedroom",
         fields={"action": "action", "code": "action_code"},
         actions={
             AlarmPanelAction.Disarm: "disarm",
@@ -541,7 +561,7 @@ alarm_panels = {
             AlarmPanelAction.NotReady: "not_ready",
             AlarmPanelAction.AlreadyDisarmed: "not_ready"
         },
-        label="Develco bedroom",
+        label="Master bedroom alarm panel",
         set_states={
             AlarmState.Disarmed: "disarm",
             AlarmState.ArmedHome: "arm_day_zones",
