@@ -292,11 +292,10 @@ outputs = {
         label="Siren outdoor",
         debug=True
     ),
-    # "beacon": Output(
-    #     gpio=13,
-    #     label="Beacon",
-    #     debug=True
-    # ),
+    "door_chime": Output(
+        gpio=13,
+        label="Door chime"
+    ),
     # "aux1": Output(20),
     # "aux2": Output(21)
 }
@@ -741,8 +740,9 @@ class State:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
             if (value and state.data["config"]["door_chime"] and zone.dev_class == DevClass.Door
-                    and not state.data["config"]["walk_test"] and self.system == "disarmed"):
-                threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2, 0.5])).start()
+                    and not state.data["config"]["walk_test"] and self.system == "disarmed"
+                    and not door_chime_lock.locked()):
+                threading.Thread(target=door_chime, args=()).start()
 
             if value and self.system in ["triggered", "armed_home", "armed_away"]:
                 if zone in notify_zones and (time.time() - self.notify_timestamps[zone] > 180):
@@ -1425,6 +1425,14 @@ def water_valve_test() -> None:
         logging.info("Water valve test completed")
 
 
+def door_chime() -> None:
+    with door_chime_lock:
+        outputs["door_chime"].set(True)
+        time.sleep(1)
+        outputs["door_chime"].set(False)
+        time.sleep(30)
+
+
 def check_reboot_required() -> None:
     while True:
         reboot_is_required = os.path.isfile("/var/run/reboot-required")
@@ -1492,6 +1500,7 @@ water_alarm_lock = threading.Lock()
 
 battery_test_lock = threading.Lock()
 water_valve_test_lock = threading.Lock()
+door_chime_lock = threading.Lock()
 
 logging.info("Arm home zones: %s", home_zones)
 logging.info("Arm away zones: %s", away_zones)
