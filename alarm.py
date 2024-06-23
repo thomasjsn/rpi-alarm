@@ -1121,8 +1121,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
         y = {"value": msg.payload.decode('utf-8')}
         logging.debug("Unable to decode JSON, created object %s", y)
 
-    if msg.topic == "zigbee2mqtt/bridge/state" and "value" in y:
-        state.status["zigbee_bridge"] = y["value"] == "online"
+    if msg.topic == "zigbee2mqtt/bridge/state" and "state" in y:
+        state.status["zigbee_bridge"] = y["state"] == "online"
         state.data["zigbee_bridge"] = state.status["zigbee_bridge"]
         return
 
@@ -1204,7 +1204,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                     panel.linkquality.pop(0)
 
                 state.status[f"panel_{key}_linkquality"] = max(panel.linkquality) > 20
-                print(panel.linkquality)
+                # print(panel.linkquality)
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1276,7 +1276,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                     sensor.linkquality.pop(0)
 
                 state.status[f"sensor_{key}_linkquality"] = max(sensor.linkquality) > 20
-                print(sensor.linkquality)
+                # print(sensor.linkquality)
 
 
 def status_check() -> None:
