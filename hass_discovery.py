@@ -31,57 +31,58 @@ def discovery(client: mqtt.Client, zones, zone_timers) -> None:
 
         if entity.component == "binary_sensor":
             payload = payload | {
-                    "payload_off": False,
-                    "payload_on": True
-                    }
+                "payload_off": False,
+                "payload_on": True
+            }
 
         if entity.component == "switch":
             payload = payload | {
-                    "payload_off": json.dumps({"option": entity.id, "value": False}),
-                    "payload_on": json.dumps({"option": entity.id, "value": True}),
-                    "state_off": False,
-                    "state_on": True,
-                    "command_topic": "home/alarm_test/config"
-                    }
+                "payload_off": json.dumps({"option": entity.id, "value": False}),
+                "payload_on": json.dumps({"option": entity.id, "value": True}),
+                "state_off": False,
+                "state_on": True,
+                "command_topic": "home/alarm_test/config"
+            }
 
         if entity.component == "button":
             payload = payload | {
-                    "payload_press": json.dumps({"option": entity.id, "value": True}),
-                    "command_topic": "home/alarm_test/action"
-                    }
+                "payload_press": json.dumps({"option": entity.id, "value": True}),
+                "command_topic": "home/alarm_test/action"
+            }
 
         if entity.component == "valve":
             payload = payload | {
-                    "payload_close": None,
-                    "payload_open": None,
-                    "state_closed": False,
-                    "state_open": True
-                    }
+                "payload_close": json.dumps({"option": "water_valve_set", "value": False}),
+                "payload_open": json.dumps({"option": "water_valve_set", "value": True}),
+                "state_closed": False,
+                "state_open": True,
+                "command_topic": "home/alarm_test/action"
+            }
 
         if entity.dev_class is not None:
             payload = payload | {
-                    "device_class": entity.dev_class
-                    }
+                "device_class": entity.dev_class
+            }
 
         if entity.state_class is not None:
             payload = payload | {
-                    "state_class": entity.state_class
-                    }
+                "state_class": entity.state_class
+            }
 
         if entity.category is not None:
             payload = payload | {
-                    "entity_category": entity.category
-                    }
+                "entity_category": entity.category
+            }
 
         if entity.icon is not None:
             payload = payload | {
-                    "icon": "mdi:" + entity.icon
-                    }
+                "icon": "mdi:" + entity.icon
+            }
 
         if entity.unit is not None:
             payload = payload | {
-                    "unit_of_measurement": entity.unit
-                    }
+                "unit_of_measurement": entity.unit
+            }
 
         client.publish(f'homeassistant/{entity.component}/rpi_alarm/{entity.id}/config',
                        json.dumps(payload), retain=True)
