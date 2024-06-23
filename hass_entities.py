@@ -183,8 +183,8 @@ entities = [
     Entity(
         id="water_valve",
         data_key="water_valve",
-        component="binary_sensor",
-        dev_class="opening",
+        component="valve",
+        dev_class="water",
         label="Water valve"
     ),
     Entity(

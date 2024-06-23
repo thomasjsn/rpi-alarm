@@ -50,6 +50,14 @@ def discovery(client: mqtt.Client, zones, zone_timers) -> None:
                     "command_topic": "home/alarm_test/action"
                     }
 
+        if entity.component == "valve":
+            payload = payload | {
+                    "payload_close": None,
+                    "payload_open": None,
+                    "state_closed": False,
+                    "state_open": True
+                    }
+
         if entity.dev_class is not None:
             payload = payload | {
                     "device_class": entity.dev_class
