@@ -516,17 +516,17 @@ alarm_panels = {
         },
         label="Home Assistant"
     ),
-    "climax": AlarmPanel(
-        topic="zigbee2mqtt/Alarm panel",
-        fields={"action": "action", "code": "action_code"},
-        actions={
-            AlarmPanelAction.Disarm: "disarm",
-            AlarmPanelAction.ArmAway: "arm_all_zones",
-            AlarmPanelAction.ArmHome: "arm_day_zones"
-        },
-        label="Climax",
-        timeout=2100
-    ),
+    # "climax": AlarmPanel(
+    #     topic="zigbee2mqtt/Alarm panel",
+    #     fields={"action": "action", "code": "action_code"},
+    #     actions={
+    #         AlarmPanelAction.Disarm: "disarm",
+    #         AlarmPanelAction.ArmAway: "arm_all_zones",
+    #         AlarmPanelAction.ArmHome: "arm_day_zones"
+    #     },
+    #     label="Climax",
+    #     timeout=2100
+    # ),
     "develco1": AlarmPanel(
         topic="zigbee2mqtt/Panel entrance",
         fields={"action": "action", "code": "action_code"},
