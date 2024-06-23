@@ -154,6 +154,7 @@ class Sensor(Zone):
         self.value = value
         self.timeout = timeout
         self.timestamp = time.time()
+        self.linkquality = []
 
     def __str__(self):
         return self.label
@@ -212,6 +213,7 @@ class AlarmPanel:
         self.set_states = set_states or {}
         self.timeout = timeout
         self.timestamp = time.time()
+        self.linkquality = []
 
     def __str__(self):
         return self.label
@@ -1196,7 +1198,13 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
             if "linkquality" in y:
                 # logging.debug("Found link quality %s on panel %s", y["linkquality"], panel)
-                state.status[f"panel_{key}_linkquality"] = int(y["linkquality"]) > 20
+                panel.linkquality.append(int(y["linkquality"]))
+
+                if len(panel.linkquality) > 3:
+                    panel.linkquality.pop(0)
+
+                state.status[f"panel_{key}_linkquality"] = max(panel.linkquality) > 20
+                print(panel.linkquality)
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1262,7 +1270,13 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
             if "linkquality" in y:
                 # logging.debug("Found link quality %s on sensor %s", y["linkquality"], sensor)
-                state.status[f"sensor_{key}_linkquality"] = int(y["linkquality"]) > 20
+                sensor.linkquality.append(int(y["linkquality"]))
+
+                if len(sensor.linkquality) > 3:
+                    sensor.linkquality.pop(0)
+
+                state.status[f"sensor_{key}_linkquality"] = max(sensor.linkquality) > 20
+                print(sensor.linkquality)
 
 
 def status_check() -> None:
