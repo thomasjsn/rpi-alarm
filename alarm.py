@@ -400,6 +400,16 @@ sensors = {
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Notify]
     ),
+    "garage_door1": Sensor(
+        key="garage_door1",
+        topic="zigbee2mqtt/Door garage side",
+        field="contact",
+        value=SensorValue.Falsy,
+        label="Garage side door",
+        dev_class=DevClass.Door,
+        arm_modes=[ArmMode.Notify],
+        timeout=3900
+    ),
     "water_leak1": Sensor(
         key="water_leak1",
         topic="zigbee2mqtt/Water kitchen dishwasher",
@@ -859,7 +869,7 @@ def siren(seconds: int, zone: Zone, current_state: str) -> bool:
 
     while (start_time + seconds) > time.time():
         # ANSI S3.41-1990; Temporal Three or T3 pattern
-        # Indoor siren uses about 0.2 seconds to reach
+        # Indoor siren uses about 0.2 seconds to react
         if zone in fire_zones:
             for _ in range(3):
                 outputs["siren1"].set(True)
