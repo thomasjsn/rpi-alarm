@@ -1195,6 +1195,10 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             else:
                 logging.error("No water zones defined, unable to run water alarm test!")
 
+        if act_option == "water_valve_set":
+            arduino.commands.put([3, not act_value])
+            # logging.info("Water valve action: %s", act_value)
+
         return
 
     for key, panel in alarm_panels.items():
