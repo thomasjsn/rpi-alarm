@@ -63,12 +63,12 @@ class Arduino:
                 # print(received)
                 received = received.split("|")
 
-                # Factors
-                # voltage1: 12.004 / 2.975
-                # voltage2: 12.004 / 2.979
+                # Factors is voltage before and after voltage divider
+                # R1 = 100k, R2 = 33k
+                # Vout = (Vs x R2) / (R1 + R2)
 
-                ai_voltage = 4.705 / 1023
-                ai_factor = [4.03495798319327731092, 4.02954011413225914736]
+                ai_voltage = 4.096 / 1024
+                ai_factor = [12.004 / 2.975, 12.004 / 2.979]
                 ai_samples = 10
 
                 self.voltage1.append(int(received[0]) * ai_voltage * ai_factor[0])

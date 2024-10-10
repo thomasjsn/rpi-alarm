@@ -1334,7 +1334,7 @@ def serial_data() -> None:
         data = arduino.data
 
         if args.print_serial:
-            print(json.dumps(data, indent=2, sort_keys=True))
+            print(json.dumps(data.__dict__, indent=2, sort_keys=True))
 
         try:
             state.data["temperature"] = data.temperature
