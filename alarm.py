@@ -440,24 +440,6 @@ sensors = {
         arm_modes=[ArmMode.Water],
         timeout=3600
     ),
-    # "panic": Sensor(
-    #     key="panic",
-    #     topic="zigbee2mqtt/Alarm panel",
-    #     field="action",
-    #     value=SensorValue.Panic,
-    #     label="Panic button",
-    #     dev_class=DevClass.Generic,
-    #     arm_modes=[ArmMode.Direct]
-    # ),
-    # "emergency1": Sensor(
-    #     key="emergency1",
-    #     topic="zigbee2mqtt/Alarm panel",
-    #     field="action",
-    #     value=SensorValue.Emergency,
-    #     label="Emergency button 1",
-    #     dev_class=DevClass.Generic,
-    #     arm_modes=[ArmMode.Direct]
-    # ),
     "emergency1": Sensor(
         key="emergency1",
         topic="zigbee2mqtt/Panel entrance",
@@ -528,17 +510,6 @@ alarm_panels = {
         },
         label="Home Assistant"
     ),
-    # "climax": AlarmPanel(
-    #     topic="zigbee2mqtt/Alarm panel",
-    #     fields={"action": "action", "code": "action_code"},
-    #     actions={
-    #         AlarmPanelAction.Disarm: "disarm",
-    #         AlarmPanelAction.ArmAway: "arm_all_zones",
-    #         AlarmPanelAction.ArmHome: "arm_day_zones"
-    #     },
-    #     label="Climax",
-    #     timeout=2100
-    # ),
     "develco1": AlarmPanel(
         topic="zigbee2mqtt/Panel entrance",
         fields={"action": "action", "code": "action_code"},
@@ -655,22 +626,6 @@ class StateData:
 
 class State:
     def __init__(self):
-        # self.data = {
-        #     "state": config.get("system", "state"),
-        #     "battery": {},
-        #     "fault": None,
-        #     "tamper": None,
-        #     "triggered": None,
-        #     "zones": {},
-        #     "zone_timers": {},
-        #     "config": {
-        #         "walk_test": config.getboolean("config", "walk_test", fallback=False),
-        #         "door_open_warning": config.getboolean("config", "door_open_warning", fallback=True),
-        #         "aux_output1": config.getboolean("config", "aux_output1", fallback=False),
-        #         "aux_output2": config.getboolean("config", "aux_output2", fallback=False)
-        #     }
-        # }
-
         self.data: StateData = StateData(
             state=config.get("system", "state"),
             config={
@@ -877,13 +832,6 @@ def siren(seconds: int, zone: Zone, current_state: str) -> bool:
                 outputs["siren1"].set(False)
                 time.sleep(0.3)
             time.sleep(1)
-
-        # elif zone in [zones["emergency1"], zones["emergency2"]]:
-        #     outputs["siren1"].set(True)
-        #     time.sleep(0.5)
-        #     outputs["siren1"].set(False)
-        #     time.sleep(10)
-        #     break
 
         elif zone in water_zones:
             outputs["siren1"].set(True)
