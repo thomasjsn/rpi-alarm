@@ -604,6 +604,7 @@ class StateData:
     battery_low: bool = None
     battery_test_running: bool = None
     battery_voltage: float = None
+    system_voltage: float = None
     config: dict[str, bool] = field(default_factory=dict)
     fault: bool = None
     reboot_required: bool = None
@@ -1301,14 +1302,16 @@ def serial_data() -> None:
         try:
             state.data["temperature"] = data.temperature
             state.data["auxiliary_voltage"] = data.aux12_voltage
+            state.data["system_voltage"] = data.system_voltage
 
             state.data["battery_voltage"] = data.battery_voltage
             state.data["battery_level"] = battery.level(data.battery_voltage)
             state.data["battery_low"] = data.battery_voltage < 12
             state.data["battery_charging"] = data.battery_voltage > 13 and not data.outputs[1]
 
-            state.status["auxiliary_voltage"] = data.aux12_voltage > 12
-            state.status["battery_voltage"] = data.battery_voltage > 12
+            state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
+            state.status["battery_voltage"] = 12 < data.battery_voltage < 15
+            state.status["system_voltage"] = 5 <= data.system_voltage < 5.2
             state.status["cabinet_temp"] = data.temperature < 30
 
             state.data["water_valve"] = not data.outputs[2]
@@ -1378,7 +1381,7 @@ def battery_test() -> None:
         start_time = time.time()
         battery_log.info("Battery test started at %s V", arduino.data.battery_voltage)
 
-        while state.data["battery_level"] > 50:
+        while state.data["battery_level"] >= 50:
             time.sleep(1)
 
         hc_battery_test.stop()

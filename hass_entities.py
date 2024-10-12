@@ -117,6 +117,16 @@ entities = [
         category="diagnostic"
     ),
     Entity(
+        id="system_voltage",
+        data_key="system_voltage",
+        component="sensor",
+        dev_class="voltage",
+        state_class="measurement",
+        unit="V",
+        label="System voltage",
+        category="diagnostic"
+    ),
+    Entity(
         id="walk_test",
         data_key="config.walk_test",
         component="switch",

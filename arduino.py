@@ -32,6 +32,7 @@ Meaning output 1 is read as output[0] but changed with "o,1,x".
 class ArduinoData:
     battery_voltage: float = None
     aux12_voltage: float = None
+    system_voltage: float = None
     temperature: float = None
     inputs: list[bool] = field(default_factory=list)
     outputs: list[bool] = field(default_factory=list)
@@ -43,6 +44,7 @@ class Arduino:
         self.commands: queue.Queue = queue.Queue()
         self.voltage1: list[float] = []
         self.voltage2: list[float] = []
+        self.voltage3: list[float] = []
         self.temperature: list[float] = []
         self.timestamp: float = time.time()
         self.data_ready: threading.Event = threading.Event()
@@ -66,27 +68,33 @@ class Arduino:
                 # Factors is voltage before and after voltage divider
                 # R1 = 100k, R2 = 33k
                 # Vout = (Vs x R2) / (R1 + R2)
+                # Ratio = R2 / (R1 + R2)
 
                 ai_voltage = 4.096 / 1024
-                ai_factor = [12.004 / 2.975, 12.004 / 2.979]
-                ai_samples = 10
+                # ai_factor = [12.004 / 2.975, 12.004 / 2.979, 12.002 / 2.986]
+                ai_factor = [12.004 / 2.975, 12.004 / 2.979, 5.001 / 1.244]
+                ai_samples = 3
 
                 self.voltage1.append(int(received[0]) * ai_voltage * ai_factor[0])
                 self.voltage2.append(int(received[1]) * ai_voltage * ai_factor[1])
-                self.temperature.append(float(received[2]))
+                self.voltage3.append(int(received[2]) * ai_voltage * ai_factor[2] + 0.03)
+                self.temperature.append(float(received[3]))
 
                 if len(self.voltage1) > ai_samples:
                     self.voltage1.pop(0)
                 if len(self.voltage2) > ai_samples:
                     self.voltage2.pop(0)
+                if len(self.voltage3) > ai_samples:
+                    self.voltage3.pop(0)
                 if len(self.temperature) > ai_samples:
                     self.temperature.pop(0)
 
                 self.data.battery_voltage = round(sum(self.voltage1) / len(self.voltage1), 2)
                 self.data.aux12_voltage = round(sum(self.voltage2) / len(self.voltage2), 2)
-                self.data.temperature = round(sum(self.temperature) / len(self.temperature), 2)
-                self.data.inputs = [not bool(int(received[3]) & (1 << n)) for n in range(5)]
-                self.data.outputs = [bool(int(received[4]) & (1 << n)) for n in range(7)]
+                self.data.system_voltage = round(sum(self.voltage3) / len(self.voltage3), 2)
+                self.data.temperature = round(sum(self.temperature) / len(self.temperature), 1)
+                self.data.inputs = [not bool(int(received[4]) & (1 << n)) for n in range(5)]
+                self.data.outputs = [bool(int(received[5]) & (1 << n)) for n in range(7)]
 
                 self.timestamp = time.time()
                 self.data_ready.set()
