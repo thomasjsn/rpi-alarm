@@ -8,6 +8,7 @@ WorkingDirectory=/home/hebron/rpi-alarm/
 ExecStart=/usr/bin/python /home/hebron/rpi-alarm/alarm.py
 Restart=on-failure
 User=hebron
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=default.target
