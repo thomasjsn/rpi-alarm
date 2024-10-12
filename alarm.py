@@ -11,6 +11,7 @@ import argparse
 import atexit
 import os
 import math
+import random
 from itertools import chain
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -1139,7 +1140,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                 buzzer_signal(7, [0.1, 0.9])
                 buzzer_signal(1, [2.5, 0.5])
             if water_zones:
-                check_zone(water_zones[0])  # use first water sensor to test
+                check_zone(random.choice(water_zones))  # use random water sensor to test
             else:
                 logging.error("No water zones defined, unable to run water alarm test!")
 
