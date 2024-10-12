@@ -565,13 +565,13 @@ battery_log_handler = logging.FileHandler('logs/battery.log')
 battery_log_handler.setFormatter(logging.Formatter(logging_format))
 battery_log.addHandler(battery_log_handler)
 
-rpi_gpio_log = logging.getLogger("rpi_gpio")
-rpi_gpio_log_file_handler = logging.handlers.RotatingFileHandler('logs/rpi_gpio.log',
-                                                                 maxBytes=200*1000, backupCount=5)
-rpi_gpio_log_file_handler.setFormatter(logging.Formatter(logging_format))
-rpi_gpio_log_mem_handler = logging.handlers.MemoryHandler(50, target=rpi_gpio_log_file_handler)
-rpi_gpio_log_mem_handler.setFormatter(logging.Formatter(logging_format))
-rpi_gpio_log.addHandler(rpi_gpio_log_mem_handler)
+# rpi_gpio_log = logging.getLogger("rpi_gpio")
+# rpi_gpio_log_file_handler = logging.handlers.RotatingFileHandler('logs/rpi_gpio.log',
+#                                                                  maxBytes=200*1000, backupCount=5)
+# rpi_gpio_log_file_handler.setFormatter(logging.Formatter(logging_format))
+# rpi_gpio_log_mem_handler = logging.handlers.MemoryHandler(50, target=rpi_gpio_log_file_handler)
+# rpi_gpio_log_mem_handler.setFormatter(logging.Formatter(logging_format))
+# rpi_gpio_log.addHandler(rpi_gpio_log_mem_handler)
 
 if args.log_level:
     logging.getLogger().setLevel(args.log_level)
@@ -1525,8 +1525,8 @@ if __name__ == "__main__":
                 if input_active_counter[input_key] > 5:
                     check_zone(gpio_input)
             else:
-                if input_active_counter[input_key] > 0:
-                    rpi_gpio_log.debug("Zone: %s was active for %s cycles", gpio_input, input_active_counter[input_key])
+                # if input_active_counter[input_key] > 0:
+                #     rpi_gpio_log.debug("Zone: %s was active for %s cycles", gpio_input, input_active_counter[input_key])
                 input_active_counter[input_key] = 0
 
         if not triggered_lock.locked() and (outputs["siren1"].is_true or outputs["siren2"].is_true):
