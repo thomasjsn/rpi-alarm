@@ -165,6 +165,14 @@ entities = [
         category="diagnostic"
     ),
     Entity(
+        id="fire_alarm_test",
+        data_key=None,
+        component="button",
+        label="Fire alarm test",
+        icon="fire-alert",
+        category="diagnostic"
+    ),
+    Entity(
         id="zigbee_bridge",
         data_key="zigbee_bridge",
         component="binary_sensor",

@@ -1144,6 +1144,15 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             else:
                 logging.error("No water zones defined, unable to run water alarm test!")
 
+        if act_option == "fire_alarm_test" and act_value:
+            with pending_lock:
+                buzzer_signal(7, [0.1, 0.9])
+                buzzer_signal(1, [2.5, 0.5])
+            if water_zones:
+                check_zone(random.choice(fire_zones))  # use random fire sensor to test
+            else:
+                logging.error("No fire zones defined, unable to run fire alarm test!")
+
         if act_option == "water_valve_set":
             arduino.commands.put([3, not act_value])
             # logging.info("Water valve action: %s", act_value)
