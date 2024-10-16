@@ -28,7 +28,7 @@ class Battery:
             if input_voltage >= voltage:
                 self.percentage.append(percentage)
 
-                if len(self.percentage) > 3:
+                if len(self.percentage) > 30:
                     self.percentage.pop(0)
 
                 return int(round(sum(self.percentage) / len(self.percentage), 0))

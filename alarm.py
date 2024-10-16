@@ -1297,6 +1297,7 @@ def serial_data() -> None:
         data = arduino.data
 
         if args.print_serial:
+            print(arduino.timestamp)
             print(json.dumps(data.__dict__, indent=2, sort_keys=True))
 
         try:
@@ -1311,7 +1312,7 @@ def serial_data() -> None:
 
             state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
             state.status["battery_voltage"] = 12 < data.battery_voltage < 15
-            state.status["system_voltage"] = 5 <= data.system_voltage < 5.2
+            state.status["system_voltage"] = 5 < data.system_voltage < 5.2
             state.status["cabinet_temp"] = data.temperature < 30
 
             state.data["water_valve"] = not data.outputs[2]
