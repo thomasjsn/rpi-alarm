@@ -452,7 +452,7 @@ sensors = {
     ),
     "emergency2": Sensor(
         key="emergency2",
-        topic="zigbee2mqtt/0x0015bc00430003ca",
+        topic="zigbee2mqtt/Panel master bedroom",
         field="action",
         value=SensorValue.Emergency,
         label="Emergency button bedroom",
