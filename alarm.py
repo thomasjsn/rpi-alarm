@@ -1181,7 +1181,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
-            code = str(y.get(panel.fields["code"])).lower()
+            code = y.get(panel.fields["code"])
+            code_str = str(code).lower()
             action_transaction = y.get("action_transaction")
 
             if msg.retain == 1:
@@ -1191,8 +1192,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             # if panel.emergency and action == panel.emergency:
             #    logging.warning(f"Emergency from panel: {panel.label}")
 
-            if code in codes:
-                user = codes[code]
+            if code_str in codes:
+                user = codes[code_str]
                 logging.info("Panel action, %s: %s by %s (%s)", panel, action, user, action_transaction)
 
                 if action == panel.actions[AlarmPanelAction.Disarm]:
