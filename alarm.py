@@ -923,8 +923,8 @@ def triggered(current_state: str, zone: Zone) -> None:
             state.data["triggered"] = "Intrusion"
 
         state.system = "triggered"
-        logging.warning("Triggered because of zone: %s", zone)
-        pushover.push(f"Triggered, zone: {zone}", 2)
+        logging.warning("Triggered because of %s, zone: %s", state.data.triggered, zone)
+        pushover.push(f"{state.data.triggered}, zone: {zone}", 2)
 
         state.blocked.add(zone)
         logging.debug("Blocked zones: %s", state.blocked)
