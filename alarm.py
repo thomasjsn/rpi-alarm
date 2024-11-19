@@ -1310,9 +1310,9 @@ def serial_data() -> None:
             state.data["battery_low"] = data.battery_voltage < 12
             state.data["battery_charging"] = data.battery_voltage > 13 and not data.outputs[1]
 
-            state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
-            state.status["battery_voltage"] = 12 < data.battery_voltage < 15
-            state.status["system_voltage"] = 5 < data.system_voltage < 5.2
+            # state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
+            # state.status["battery_voltage"] = 12 < data.battery_voltage < 15
+            # state.status["system_voltage"] = 4.9 < data.system_voltage < 5.2
             state.status["cabinet_temp"] = data.temperature < 30
 
             state.data["water_valve"] = not data.outputs[2]
