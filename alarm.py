@@ -92,24 +92,34 @@ class DevClass(Enum):
     Moisture = "moisture"
 
 
+class ZoneAttribute(Enum):
+    Chime = auto()
+
+    def __repr__(self):
+        return self.name
+
+
 class Zone:
-    def __init__(self, key: str, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
+    def __init__(self, key: str, label: str, dev_class: DevClass,
+                 arm_modes: list[ArmMode], attributes: list[ZoneAttribute] = None):
         self.key = key
         self.label = label
         self.dev_class = dev_class
         self.arm_modes = arm_modes
+        self.attributes = attributes if attributes is not None else []
 
 
 class Input(Zone):
-    def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
-        super().__init__(key, label, dev_class, arm_modes)
+    def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass,
+                 arm_modes: list[ArmMode], attributes: list[ZoneAttribute] = None):
+        super().__init__(key, label, dev_class, arm_modes, attributes)
         self.gpio = gpio
 
     def __str__(self):
         return self.label
 
     def __repr__(self):
-        return f"i{self.gpio}:{self.label}"
+        return f"i{self.gpio}:{self.label} {self.attributes}"
 
     def get(self):
         return GPIO.input(self.gpio) == 1
@@ -148,8 +158,8 @@ class Output:
 
 class Sensor(Zone):
     def __init__(self, key: str, topic: str, field: str, value: SensorValue, label: str, dev_class: DevClass,
-                 arm_modes: list[ArmMode], timeout: int = 0):
-        super().__init__(key, label, dev_class, arm_modes)
+                 arm_modes: list[ArmMode], timeout: int = 0, attributes: list[ZoneAttribute] = None):
+        super().__init__(key, label, dev_class, arm_modes, attributes)
         self.topic = topic
         self.field = field
         self.value = value
@@ -161,7 +171,7 @@ class Sensor(Zone):
         return self.label
 
     def __repr__(self):
-        return f"s:{self.label}"
+        return f"s:{self.label} {self.attributes}"
 
     def get(self):
         return state.data["zones"][self.key]
@@ -312,6 +322,7 @@ sensors = {
         label="Front door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.AwayDelayed],
+        attributes=[ZoneAttribute.Chime],
         timeout=3900
     ),
     "door2": Sensor(
@@ -322,6 +333,7 @@ sensors = {
         label="Back door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
+        attributes=[ZoneAttribute.Chime],
         timeout=3900
     ),
     "door3": Sensor(
@@ -332,6 +344,7 @@ sensors = {
         label="2nd floor door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
+        attributes=[ZoneAttribute.Chime],
         timeout=3900
     ),
     "motion1": Sensor(
@@ -708,7 +721,7 @@ class State:
             if value and state.data["config"]["walk_test"]:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
-            if (value and state.data["config"]["door_chime"] and zone.dev_class == DevClass.Door
+            if (value and state.data["config"]["door_chime"] and ZoneAttribute.Chime in zone.attributes
                     and not state.data["config"]["walk_test"] and self.system == "disarmed"
                     and not door_chime_lock.locked()):
                 threading.Thread(target=door_chime, args=()).start()
