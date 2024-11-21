@@ -1031,10 +1031,10 @@ def check_zone(zone: Zone) -> None:
             threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
     if state.system in ["armed_away", "pending", "triggered"] and zone in away_zones:
-        zones_open = len(state.zones_open)
+        zones_open_count = len(state.zones_open)
         state.zones_open.add(zone)
 
-        if len(state.zones_open) > zones_open:
+        if len(state.zones_open) > zones_open_count:
             logging.info("Added zone to list of open zones: %s", zone)
             if len(state.zones_open) > 1 and state.system == "triggered":
                 zones_open_str = ", ".join([o.label for o in state.zones_open])
