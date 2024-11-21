@@ -94,6 +94,7 @@ class DevClass(Enum):
 
 class ZoneAttribute(Enum):
     Chime = auto()
+    OpenWarning = auto()
 
     def __repr__(self):
         return self.name
@@ -322,7 +323,7 @@ sensors = {
         label="Front door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.AwayDelayed],
-        attributes=[ZoneAttribute.Chime],
+        attributes=[ZoneAttribute.Chime, ZoneAttribute.OpenWarning],
         timeout=3900
     ),
     "door2": Sensor(
@@ -1357,17 +1358,22 @@ def serial_data() -> None:
 
 
 def door_open_warning() -> None:
-    door_closed_time = time.time()
+    zone_closed_time: dict[str, float] = {}
+    seconds_open_dict: dict[str, int] = {}
 
     while True:
         # De Morgan's laws:
         #   not (A or B) = (not A) and (not B)
         #   not (A and B) = (not A) or (not B)
         # If door is closed or warning is disabled
-        if not (sensors["door1"].is_true and state.data["config"]["door_open_warning"]):
-            door_closed_time = time.time()
+        for zone in [z for z in zones.values() if ZoneAttribute.OpenWarning in z.attributes]:
+            if not (zone.get() and state.data["config"]["door_open_warning"]):
+                zone_closed_time[zone.key] = time.time()
 
-        seconds_open = math.floor(time.time() - door_closed_time)
+            seconds_open_dict[zone.key] = math.floor(time.time() - zone_closed_time.get(zone.key, time.time()))
+
+        #print(seconds_open_dict, zone_closed_time)
+        seconds_open = max(seconds_open_dict.values())
 
         interval = 20
         if seconds_open > 180:
