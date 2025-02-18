@@ -12,6 +12,7 @@ import atexit
 import os
 import math
 import random
+import statistics
 from itertools import chain
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -1187,19 +1188,24 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             panel.timestamp = time.time()
 
             if "battery" in y:
-                if isinstance(y["battery"], int):
+                if isinstance(y["battery"], (int, float)):
                     # logging.debug("Found battery level %s on panel %s", y["battery"], panel)
-                    state.status[f"panel_{key}_battery"] = int(y["battery"]) > 20
+                    # state.status[f"panel_{key}_battery"] = int(y["battery"]) > 20
+                    state.status[f"{panel.label.replace(' ', '_')}_bat"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
-                # logging.debug("Found link quality %s on panel %s", y["linkquality"], panel)
-                panel.linkquality.append(int(y["linkquality"]))
+                if isinstance(y["linkquality"], (int, float)):
+                    # logging.debug("Found link quality %s on panel %s", y["linkquality"], panel)
+                    panel.linkquality.append(int(y["linkquality"]))
 
-                if len(panel.linkquality) > 3:
-                    panel.linkquality.pop(0)
+                    if len(panel.linkquality) > 10:
+                        panel.linkquality.pop(0)
 
-                state.status[f"panel_{key}_linkquality"] = max(panel.linkquality) > 20
-                # print(panel.linkquality)
+                    if len(panel.linkquality) > 1:
+                        # state.status[f"panel_{key}_linkquality"] = max(panel.linkquality) > 20
+                        state.status[f"{panel.label.replace(' ', '_')}_lqi"] = statistics.median(panel.linkquality) > 20
+                        # print(panel.linkquality)
+                        print(panel.linkquality, statistics.median(panel.linkquality), statistics.stdev(panel.linkquality))
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1259,19 +1265,24 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                 check_zone(sensor)
 
             if "battery" in y:
-                if isinstance(y["battery"], int):
+                if isinstance(y["battery"], (int, float)):
                     # logging.debug("Found battery level %s on sensor %s", y["battery"], sensor)
-                    state.status[f"sensor_{key}_battery"] = int(y["battery"]) > 20
+                    # state.status[f"sensor_{key}_battery"] = int(y["battery"]) > 20
+                    state.status[f"{sensor.label.replace(' ', '_')}_bat"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
-                # logging.debug("Found link quality %s on sensor %s", y["linkquality"], sensor)
-                sensor.linkquality.append(int(y["linkquality"]))
+                if isinstance(y["linkquality"], (int, float)):
+                    # logging.debug("Found link quality %s on sensor %s", y["linkquality"], sensor)
+                    sensor.linkquality.append(int(y["linkquality"]))
 
-                if len(sensor.linkquality) > 3:
-                    sensor.linkquality.pop(0)
+                    if len(sensor.linkquality) > 10:
+                        sensor.linkquality.pop(0)
 
-                state.status[f"sensor_{key}_linkquality"] = max(sensor.linkquality) > 20
-                # print(sensor.linkquality)
+                    if len(sensor.linkquality) > 1:
+                        # state.status[f"sensor_{key}_linkquality"] = not min(sensor.linkquality) < 20
+                        state.status[f"{sensor.label.replace(' ', '_')}_lqi"] = statistics.median(sensor.linkquality) > 20
+                        # print(sensor.linkquality)
+                        print(sensor.linkquality, statistics.median(sensor.linkquality), statistics.stdev(sensor.linkquality))
 
 
 def status_check() -> None:
