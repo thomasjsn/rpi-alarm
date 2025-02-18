@@ -93,24 +93,35 @@ class DevClass(Enum):
     Moisture = "moisture"
 
 
+class ZoneAttribute(Enum):
+    Chime = auto()
+    OpenWarning = auto()
+
+    def __repr__(self):
+        return self.name
+
+
 class Zone:
-    def __init__(self, key: str, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
+    def __init__(self, key: str, label: str, dev_class: DevClass,
+                 arm_modes: list[ArmMode], attributes: list[ZoneAttribute] = None):
         self.key = key
         self.label = label
         self.dev_class = dev_class
         self.arm_modes = arm_modes
+        self.attributes = attributes if attributes is not None else []
 
 
 class Input(Zone):
-    def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass, arm_modes: list[ArmMode]):
-        super().__init__(key, label, dev_class, arm_modes)
+    def __init__(self, key: str, gpio: int, label: str, dev_class: DevClass,
+                 arm_modes: list[ArmMode], attributes: list[ZoneAttribute] = None):
+        super().__init__(key, label, dev_class, arm_modes, attributes)
         self.gpio = gpio
 
     def __str__(self):
         return self.label
 
     def __repr__(self):
-        return f"i{self.gpio}:{self.label}"
+        return f"i{self.gpio}:{self.label} {self.attributes}"
 
     def get(self):
         return GPIO.input(self.gpio) == 1
@@ -149,8 +160,8 @@ class Output:
 
 class Sensor(Zone):
     def __init__(self, key: str, topic: str, field: str, value: SensorValue, label: str, dev_class: DevClass,
-                 arm_modes: list[ArmMode], timeout: int = 0):
-        super().__init__(key, label, dev_class, arm_modes)
+                 arm_modes: list[ArmMode], timeout: int = 0, attributes: list[ZoneAttribute] = None):
+        super().__init__(key, label, dev_class, arm_modes, attributes)
         self.topic = topic
         self.field = field
         self.value = value
@@ -162,7 +173,7 @@ class Sensor(Zone):
         return self.label
 
     def __repr__(self):
-        return f"s:{self.label}"
+        return f"s:{self.label} {self.attributes}"
 
     def get(self):
         return state.data["zones"][self.key]
@@ -313,6 +324,7 @@ sensors = {
         label="Front door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.AwayDelayed],
+        attributes=[ZoneAttribute.Chime, ZoneAttribute.OpenWarning],
         timeout=3900
     ),
     "door2": Sensor(
@@ -323,6 +335,7 @@ sensors = {
         label="Back door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
+        attributes=[ZoneAttribute.Chime],
         timeout=3900
     ),
     "door3": Sensor(
@@ -333,6 +346,7 @@ sensors = {
         label="2nd floor door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
+        attributes=[ZoneAttribute.Chime],
         timeout=3900
     ),
     "motion1": Sensor(
@@ -731,7 +745,7 @@ class State:
             if value and state.data["config"]["walk_test"]:
                 threading.Thread(target=buzzer_signal, args=(2, [0.2, 0.2])).start()
 
-            if (value and state.data["config"]["door_chime"] and zone.dev_class == DevClass.Door
+            if (value and state.data["config"]["door_chime"] and ZoneAttribute.Chime in zone.attributes
                     and not state.data["config"]["walk_test"] and self.system == "disarmed"
                     and not door_chime_lock.locked()):
                 threading.Thread(target=door_chime, args=()).start()
@@ -1040,10 +1054,10 @@ def check_zone(zone: Zone) -> None:
             threading.Thread(target=triggered, args=("armed_home", zone,)).start()
 
     if state.system in ["armed_away", "pending", "triggered"] and zone in away_zones:
-        zones_open = len(state.zones_open)
+        zones_open_count = len(state.zones_open)
         state.zones_open.add(zone)
 
-        if len(state.zones_open) > zones_open:
+        if len(state.zones_open) > zones_open_count:
             logging.info("Added zone to list of open zones: %s", zone)
             if len(state.zones_open) > 1 and state.system == "triggered":
                 zones_open_str = ", ".join([o.label for o in state.zones_open])
@@ -1209,7 +1223,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
-            code = str(y.get(panel.fields["code"])).lower()
+            code = y.get(panel.fields["code"])
+            code_str = str(code).lower()
             action_transaction = y.get("action_transaction")
 
             if msg.retain == 1:
@@ -1219,8 +1234,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             # if panel.emergency and action == panel.emergency:
             #    logging.warning(f"Emergency from panel: {panel.label}")
 
-            if code in codes:
-                user = codes[code]
+            if code_str in codes:
+                user = codes[code_str]
                 logging.info("Panel action, %s: %s by %s (%s)", panel, action, user, action_transaction)
 
                 if action == panel.actions[AlarmPanelAction.Disarm]:
@@ -1343,9 +1358,9 @@ def serial_data() -> None:
             state.data["battery_low"] = data.battery_voltage < 12
             state.data["battery_charging"] = data.battery_voltage > 13 and not data.outputs[1]
 
-            state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
-            state.status["battery_voltage"] = 12 < data.battery_voltage < 15
-            state.status["system_voltage"] = 5 < data.system_voltage < 5.2
+            # state.status["auxiliary_voltage"] = 12 < data.aux12_voltage < 12.5
+            # state.status["battery_voltage"] = 12 < data.battery_voltage < 15
+            # state.status["system_voltage"] = 4.9 < data.system_voltage < 5.2
             state.status["cabinet_temp"] = data.temperature < 30
 
             state.data["water_valve"] = not data.outputs[2]
@@ -1376,17 +1391,22 @@ def serial_data() -> None:
 
 
 def door_open_warning() -> None:
-    door_closed_time = time.time()
+    zone_closed_time: dict[str, float] = {}
+    seconds_open_dict: dict[str, int] = {}
 
     while True:
         # De Morgan's laws:
         #   not (A or B) = (not A) and (not B)
         #   not (A and B) = (not A) or (not B)
         # If door is closed or warning is disabled
-        if not (sensors["door1"].is_true and state.data["config"]["door_open_warning"]):
-            door_closed_time = time.time()
+        for zone in [z for z in zones.values() if ZoneAttribute.OpenWarning in z.attributes]:
+            if not (zone.get() and state.data["config"]["door_open_warning"]):
+                zone_closed_time[zone.key] = time.time()
 
-        seconds_open = math.floor(time.time() - door_closed_time)
+            seconds_open_dict[zone.key] = math.floor(time.time() - zone_closed_time.get(zone.key, time.time()))
+
+        #print(seconds_open_dict, zone_closed_time)
+        seconds_open = max(seconds_open_dict.values())
 
         interval = 20
         if seconds_open > 180:
