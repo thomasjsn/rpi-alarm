@@ -356,12 +356,13 @@ sensors = {
     ),
     "motion3": Sensor(
         key="motion3",
-        topic="hass2mqtt/binary_sensor/entreen_motion/state",
-        field="value",
-        value=SensorValue.On,
-        label="Entrance motion",
+        topic="zigbee2mqtt/Motion entryway",
+        field="occupancy",
+        value=SensorValue.Truthy,
+        label="Entryway motion",
         dev_class=DevClass.Motion,
-        arm_modes=[ArmMode.AwayDelayed]
+        arm_modes=[ArmMode.AwayDelayed],
+        timeout=3900
     ),
     "motion4": Sensor(
         key="motion4",
@@ -375,12 +376,13 @@ sensors = {
     ),
     "motion5": Sensor(
         key="motion5",
-        topic="hass2mqtt/binary_sensor/hue_motion_sensor_1_motion/state",
-        field="value",
-        value=SensorValue.On,
+        topic="zigbee2mqtt/Motion bathroom",
+        field="occupancy",
+        value=SensorValue.Truthy,
         label="Bathroom motion",
         dev_class=DevClass.Motion,
-        arm_modes=[]
+        arm_modes=[],
+        timeout=3900
     ),
     "motion6": Sensor(
         key="motion6",
@@ -388,6 +390,16 @@ sensors = {
         field="occupancy",
         value=SensorValue.Truthy,
         label="Master bedroom motion",
+        dev_class=DevClass.Motion,
+        arm_modes=[ArmMode.Away],
+        timeout=3900
+    ),
+    "motion7": Sensor(
+        key="motion7",
+        topic="zigbee2mqtt/Motion 2nd floor den",
+        field="occupancy",
+        value=SensorValue.Truthy,
+        label="Motion 2nd floor den",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Away],
         timeout=3900
@@ -437,6 +449,16 @@ sensors = {
         field="water_leak",
         value=SensorValue.Truthy,
         label="Outdoor tap hatch leak",
+        dev_class=DevClass.Moisture,
+        arm_modes=[ArmMode.Water],
+        timeout=3600
+    ),
+    "water_leak4": Sensor(
+        key="water_leak4",
+        topic="zigbee2mqtt/Water home office",
+        field="water_leak",
+        value=SensorValue.Truthy,
+        label="Home office drain leak",
         dev_class=DevClass.Moisture,
         arm_modes=[ArmMode.Water],
         timeout=3600
