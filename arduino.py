@@ -3,6 +3,7 @@ import time
 import queue
 import threading
 import logging
+import statistics
 from dataclasses import dataclass, field
 
 '''
@@ -89,10 +90,10 @@ class Arduino:
                 if len(self.temperature) > ai_samples:
                     self.temperature.pop(0)
 
-                self.data.battery_voltage = round(sum(self.voltage1) / len(self.voltage1), 2)
-                self.data.aux12_voltage = round(sum(self.voltage2) / len(self.voltage2), 2)
-                self.data.system_voltage = round(sum(self.voltage3) / len(self.voltage3), 2)
-                self.data.temperature = round(sum(self.temperature) / len(self.temperature), 1)
+                self.data.battery_voltage = round(statistics.mean(self.voltage1), 2)
+                self.data.aux12_voltage = round(statistics.mean(self.voltage2), 2)
+                self.data.system_voltage = round(statistics.mean(self.voltage3), 2)
+                self.data.temperature = round(statistics.mean(self.temperature), 1)
                 self.data.inputs = [not bool(int(received[4]) & (1 << n)) for n in range(5)]
                 self.data.outputs = [bool(int(received[5]) & (1 << n)) for n in range(7)]
 
