@@ -1307,8 +1307,8 @@ def status_check() -> None:
                 continue
 
             last_msg_s = round(time.time() - device.timestamp)
-            state.status[f"device_{key}_timeout"] = last_msg_s < device.timeout
-            state.status[f"device_{key}_lost"] = last_msg_s < 86400
+            state.status[f"{device.label.replace(' ', '_')}_timeout"] = last_msg_s < device.timeout
+            state.status[f"{device.label.replace(' ', '_')}_lost"] = last_msg_s < 86400
 
         state.status["code_attempts"] = state.code_attempts < 3
         state.status["arduino_data"] = round(time.time() - arduino.timestamp) < 10
