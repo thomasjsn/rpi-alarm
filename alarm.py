@@ -325,7 +325,7 @@ sensors = {
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.AwayDelayed],
         attributes=[ZoneAttribute.Chime, ZoneAttribute.OpenWarning],
-        timeout=3900
+        timeout=3600
     ),
     "door2": Sensor(
         key="door2",
@@ -336,7 +336,7 @@ sensors = {
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
         attributes=[ZoneAttribute.Chime],
-        timeout=3900
+        timeout=3600
     ),
     "door3": Sensor(
         key="door3",
@@ -347,7 +347,7 @@ sensors = {
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Home, ArmMode.Away],
         attributes=[ZoneAttribute.Chime],
-        timeout=3900
+        timeout=3600
     ),
     "motion1": Sensor(
         key="motion1",
@@ -367,17 +367,16 @@ sensors = {
         label="Living room motion",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Away],
-        timeout=3900
+        timeout=3600
     ),
     "motion3": Sensor(
         key="motion3",
-        topic="zigbee2mqtt/Motion entryway",
-        field="occupancy",
-        value=SensorValue.Truthy,
+        topic="hass2mqtt/binary_sensor/hue_motion_sensor_2_motion/state",
+        field="value",
+        value=SensorValue.On,
         label="Entryway motion",
         dev_class=DevClass.Motion,
-        arm_modes=[ArmMode.AwayDelayed],
-        timeout=3900
+        arm_modes=[ArmMode.AwayDelayed]
     ),
     "motion4": Sensor(
         key="motion4",
@@ -387,17 +386,16 @@ sensors = {
         label="2nd floor hallway motion",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Away],
-        timeout=3900
+        timeout=3600
     ),
     "motion5": Sensor(
         key="motion5",
-        topic="zigbee2mqtt/Motion bathroom",
-        field="occupancy",
-        value=SensorValue.Truthy,
+        topic="hass2mqtt/binary_sensor/hue_motion_sensor_1_motion/state",
+        field="value",
+        value=SensorValue.On,
         label="Bathroom motion",
         dev_class=DevClass.Motion,
-        arm_modes=[],
-        timeout=3900
+        arm_modes=[]
     ),
     "motion6": Sensor(
         key="motion6",
@@ -407,7 +405,7 @@ sensors = {
         label="Master bedroom motion",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Away],
-        timeout=3900
+        timeout=3600
     ),
     "motion7": Sensor(
         key="motion7",
@@ -417,7 +415,7 @@ sensors = {
         label="Motion 2nd floor den",
         dev_class=DevClass.Motion,
         arm_modes=[ArmMode.Away],
-        timeout=3900
+        timeout=3600
     ),
     "garage_motion1": Sensor(
         key="garage_motion1",
@@ -436,7 +434,7 @@ sensors = {
         label="Garage side door",
         dev_class=DevClass.Door,
         arm_modes=[ArmMode.Notify],
-        timeout=3900
+        timeout=3600
     ),
     "water_leak1": Sensor(
         key="water_leak1",
@@ -568,7 +566,7 @@ alarm_panels = {
             AlarmState.Pending: "entry_delay",
             AlarmState.Arming: "exit_delay"
         },
-        timeout=900
+        timeout=3600
     ),
     "develco2": AlarmPanel(
         topic="zigbee2mqtt/Panel master bedroom",
@@ -590,7 +588,7 @@ alarm_panels = {
             AlarmState.Pending: "entry_delay",
             AlarmState.Arming: "exit_delay"
         },
-        timeout=900
+        timeout=3600
     )
 }
 
@@ -1204,7 +1202,6 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             if "battery" in y:
                 if isinstance(y["battery"], (int, float)):
                     # logging.debug("Found battery level %s on panel %s", y["battery"], panel)
-                    # state.status[f"panel_{key}_battery"] = int(y["battery"]) > 20
                     state.status[f"{panel.label.replace(' ', '_')}_bat"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
@@ -1216,10 +1213,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                         panel.linkquality.pop(0)
 
                     if len(panel.linkquality) > 1:
-                        # state.status[f"panel_{key}_linkquality"] = max(panel.linkquality) > 20
-                        state.status[f"{panel.label.replace(' ', '_')}_lqi"] = statistics.median(panel.linkquality) > 20
-                        # print(panel.linkquality)
-                        print(panel.linkquality, statistics.median(panel.linkquality), statistics.stdev(panel.linkquality))
+                        state.status[f"{panel.label.replace(' ', '_')}_lqi"] = statistics.median(panel.linkquality) > 0
+                        # print(panel.linkquality, statistics.median(panel.linkquality), statistics.stdev(panel.linkquality))
 
         if msg.topic == panel.topic and panel.fields["action"] in y:
             action = y[panel.fields["action"]]
@@ -1282,7 +1277,6 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
             if "battery" in y:
                 if isinstance(y["battery"], (int, float)):
                     # logging.debug("Found battery level %s on sensor %s", y["battery"], sensor)
-                    # state.status[f"sensor_{key}_battery"] = int(y["battery"]) > 20
                     state.status[f"{sensor.label.replace(' ', '_')}_bat"] = int(y["battery"]) > 20
 
             if "linkquality" in y:
@@ -1293,11 +1287,9 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                     if len(sensor.linkquality) > 10:
                         sensor.linkquality.pop(0)
 
-                    if len(sensor.linkquality) > 1:
-                        # state.status[f"sensor_{key}_linkquality"] = not min(sensor.linkquality) < 20
-                        state.status[f"{sensor.label.replace(' ', '_')}_lqi"] = statistics.median(sensor.linkquality) > 20
-                        # print(sensor.linkquality)
-                        print(sensor.linkquality, statistics.median(sensor.linkquality), statistics.stdev(sensor.linkquality))
+                    # if len(sensor.linkquality) > 1:
+                    #     state.status[f"{sensor.label.replace(' ', '_')}_lqi"] = statistics.median(sensor.linkquality) > 0
+                    #     # print(sensor.linkquality, statistics.median(sensor.linkquality), statistics.stdev(sensor.linkquality))
 
 
 def status_check() -> None:
@@ -1307,8 +1299,8 @@ def status_check() -> None:
                 continue
 
             last_msg_s = round(time.time() - device.timestamp)
-            state.status[f"{device.label.replace(' ', '_')}_timeout"] = last_msg_s < device.timeout
-            state.status[f"{device.label.replace(' ', '_')}_lost"] = last_msg_s < 86400
+            state.status[f"{device.label.replace(' ', '_')}_timeout"] = last_msg_s < (device.timeout * 1.1)
+            state.status[f"{device.label.replace(' ', '_')}_lost"] = last_msg_s < (device.timeout * 5)
 
         state.status["code_attempts"] = state.code_attempts < 3
         state.status["arduino_data"] = round(time.time() - arduino.timestamp) < 10
