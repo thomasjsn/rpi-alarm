@@ -749,7 +749,7 @@ class State:
 
             if value and self.system in ["triggered", "armed_home", "armed_away"]:
                 if zone in notify_zones and (time.time() - self.notify_timestamps[zone] > 180):
-                    pushover.push(f"Notify zone is open: {zone}", 1)
+                    pushover.push("Notify zone is open", str(zone), 1)
                     self.notify_timestamps[zone] = time.time()
 
             tamper_zones = {k: v.get() for k, v in zones.items() if v.dev_class == DevClass.Tamper}
@@ -778,10 +778,10 @@ class State:
             if faults:
                 faulted_status = ", ".join(faults).upper()
                 logging.error("System check(s) failed: %s", faulted_status)
-                pushover.push(f"System check(s) failed: {faulted_status}")
+                pushover.push("System check(s) failed", faulted_status)
             else:
                 logging.info("System status restored")
-                pushover.push("System status restored")
+                pushover.push("System status restored", "All checks are OK")
 
     def zone_timer(self, timer_key: str) -> None:
         timer = zone_timers[timer_key]
@@ -920,7 +920,7 @@ def arming(user: str) -> None:
             logging.error("Arm away failed, not clear: %s", active_away_zones1)
 
             active_away_zones1_str = ", ".join(active_away_zones1)
-            pushover.push(f"Arm away failed, not clear: {active_away_zones1_str}", 1, {"sound": "siren"})
+            pushover.push("Arm away failed", f"Not clear: {active_away_zones1_str}", 1, {"sound": "siren"})
 
             state.system = "disarmed"
             buzzer_signal(1, [1, 0])
@@ -931,10 +931,10 @@ def arming(user: str) -> None:
             logging.warning("Suppressed zones: %s", state.blocked)
 
             active_away_zones2_str = ", ".join([o.label for o in active_away_zones2])
-            pushover.push(f"Zones active on arm, suppressed: {active_away_zones2_str}")
+            pushover.push("Away zone(s) not clear", f"Suppressed: {active_away_zones2_str}")
 
         state.system = "armed_away"
-        pushover.push(f"System armed away, by {user}")
+        pushover.push("System armed away", f"User: {user}")
 
 
 def pending(current_state: str, zone: Zone) -> None:
@@ -969,7 +969,7 @@ def triggered(current_state: str, zone: Zone) -> None:
 
         state.system = "triggered"
         logging.warning("Triggered because of %s, zone: %s", state.data.triggered, zone)
-        pushover.push(f"{state.data.triggered}, zone: {zone}", 2)
+        pushover.push(state.data.triggered, str(zone), 2)
 
         state.blocked.add(zone)
         logging.debug("Blocked zones: %s", state.blocked)
@@ -980,7 +980,7 @@ def triggered(current_state: str, zone: Zone) -> None:
 
 def disarmed(user: str) -> None:
     state.system = "disarmed"
-    pushover.push(f"System disarmed, by {user}")
+    pushover.push("System disarmed", f"User: {user}")
     buzzer_signal(2, [0.05, 0.15])
 
 
@@ -991,14 +991,14 @@ def armed_home(user: str) -> None:
         logging.error("Arm home failed, not clear: %s", active_home_zones)
 
         active_home_zones_str = ", ".join(active_home_zones)
-        pushover.push(f"Arm home failed, not clear: {active_home_zones_str}", 1, {"sound": "siren"})
+        pushover.push("Arm home failed", f"Not clear: {active_home_zones_str}", 1, {"sound": "siren"})
 
         state.system = "disarmed"
         buzzer_signal(1, [1, 0])
         return
 
     state.system = "armed_home"
-    pushover.push(f"System armed home, by {user}")
+    pushover.push("System armed home", f"User: {user}")
     buzzer_signal(1, [0.05, 0.05])
 
 
@@ -1072,7 +1072,7 @@ def check_zone(zone: Zone) -> None:
             logging.info("Added zone to list of open zones: %s", zone)
             if len(state.zones_open) > 1 and state.system == "triggered":
                 zones_open_str = ", ".join([o.label for o in state.zones_open])
-                pushover.push(f"Multiple triggered zones: {zones_open_str}", 1)
+                pushover.push("Multiple zones triggered", zones_open_str, 1)
 
 
 # The callback for when the client receives a CONNACK response from the server.
@@ -1272,7 +1272,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
                 logging.warning("Invalid code: %s, attempt: %d", code, state.code_attempts)
                 # buzzer_signal(1, [1, 0])
                 panel.validate(action_transaction, AlarmPanelAction.InvalidCode)
-                pushover.push(f"Invalid code entered on alarm panel: {panel}")
+                pushover.push("Invalid code entered", f"Panel: {panel}")
 
     for key, sensor in sensors.items():
         if msg.topic == sensor.topic and sensor.field in y:
@@ -1448,7 +1448,7 @@ def battery_test() -> None:
         battery_log.info("Battery test completed at %s V and %s %%, took: %s",
                          arduino.data.battery_voltage, state.data["battery_level"],
                          datetime.timedelta(seconds=test_time))
-        pushover.push(f"Battery test completed, took {datetime.timedelta(seconds=test_time)}")
+        pushover.push("Battery test completed", f"Time: {datetime.timedelta(seconds=test_time)}")
         arduino.commands.put([2, False])  # Re-enable charger
         arduino.commands.join()
 

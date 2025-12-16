@@ -9,7 +9,7 @@ class Pushover:
         self.token = token
         self.user = user
 
-    def _push(self, message: str, priority: int, data: dict) -> None:
+    def _push(self, title:str, message: str, priority: int, data: dict) -> None:
         if priority == 2:
             data = {
                 "sound": "alien",
@@ -23,14 +23,15 @@ class Pushover:
                      urllib.parse.urlencode({
                          "token": self.token,
                          "user": self.user,
+                         "title": title,
                          "message": message,
                          "timestamp": time.time(),
                          "sound": "gamelan"
                      } | data), {"Content-type": "application/x-www-form-urlencoded"})
         conn.getresponse()
 
-    def push(self, message: str, priority: int = 0, data: dict = None) -> None:
+    def push(self, title: str, message: str, priority: int = 0, data: dict = None) -> None:
         if data is None:
             data = {}
 
-        threading.Thread(target=self._push, args=(message, priority, data,)).start()
+        threading.Thread(target=self._push, args=(title, message, priority, data,)).start()
