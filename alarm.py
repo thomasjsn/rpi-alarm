@@ -912,18 +912,29 @@ def arming(user: str) -> None:
     if args.silent:
         arming_time = 10
 
-    if buzzer(arming_time, "arming") is True:
-        active_away_zones = [o.label for o in away_zones if o.get()]
+    if buzzer(arming_time, "arming"):
+        active_away_zones1 = [o.label for o in away_zones if o.get() and o.dev_class != DevClass.Motion]
+        active_away_zones2 = [o for o in away_zones if o.get() and o.dev_class == DevClass.Motion]
 
-        if not active_away_zones:
-            state.system = "armed_away"
-            pushover.push(f"System armed away, by {user}")
-        else:
-            logging.error("Arm away failed, not clear: %s", active_away_zones)
+        if active_away_zones1:
+            logging.error("Arm away failed, not clear: %s", active_away_zones1)
+
+            active_away_zones1_str = ", ".join(active_away_zones1)
+            pushover.push(f"Arm away failed, not clear: {active_away_zones1_str}", 1, {"sound": "siren"})
+
             state.system = "disarmed"
-            active_away_zones_str = ", ".join(active_away_zones)
-            pushover.push(f"Arm away failed, not clear: {active_away_zones_str}", 1, {"sound": "siren"})
             buzzer_signal(1, [1, 0])
+            return
+
+        if active_away_zones2:
+            state.blocked.update(active_away_zones2)
+            logging.warning("Suppressed zones: %s", state.blocked)
+
+            active_away_zones2_str = ", ".join([o.label for o in active_away_zones2])
+            pushover.push(f"Zones active on arm, suppressed: {active_away_zones2_str}")
+
+        state.system = "armed_away"
+        pushover.push(f"System armed away, by {user}")
 
 
 def pending(current_state: str, zone: Zone) -> None:
@@ -936,7 +947,7 @@ def pending(current_state: str, zone: Zone) -> None:
         state.system = "pending"
         logging.info("Pending because of zone: %s", zone)
 
-        if buzzer(delay_time, "pending") is True:
+        if buzzer(delay_time, "pending"):
             triggered(current_state, zone)
 
 
@@ -963,7 +974,7 @@ def triggered(current_state: str, zone: Zone) -> None:
         state.blocked.add(zone)
         logging.debug("Blocked zones: %s", state.blocked)
 
-        if siren(trigger_time, zone, "triggered") is True:
+        if siren(trigger_time, zone, "triggered"):
             state.system = current_state
 
 
@@ -976,16 +987,19 @@ def disarmed(user: str) -> None:
 def armed_home(user: str) -> None:
     active_home_zones = [o.label for o in home_zones if o.get()]
 
-    if not active_home_zones:
-        state.system = "armed_home"
-        pushover.push(f"System armed home, by {user}")
-        buzzer_signal(1, [0.05, 0.05])
-    else:
+    if active_home_zones:
         logging.error("Arm home failed, not clear: %s", active_home_zones)
-        state.system = "disarmed"
+
         active_home_zones_str = ", ".join(active_home_zones)
         pushover.push(f"Arm home failed, not clear: {active_home_zones_str}", 1, {"sound": "siren"})
+
+        state.system = "disarmed"
         buzzer_signal(1, [1, 0])
+        return
+
+    state.system = "armed_home"
+    pushover.push(f"System armed home, by {user}")
+    buzzer_signal(1, [0.05, 0.05])
 
 
 def water_alarm() -> None:
