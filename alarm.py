@@ -351,13 +351,12 @@ sensors = {
     ),
     "motion1": Sensor(
         key="motion1",
-        topic="zigbee2mqtt/Motion kitchen",
-        field="occupancy",
-        value=SensorValue.Truthy,
+        topic="hass2mqtt/binary_sensor/hue_motion_sensor_3_motion/state",
+        field="value",
+        value=SensorValue.On,
         label="Kitchen motion",
         dev_class=DevClass.Motion,
-        arm_modes=[ArmMode.Away],
-        timeout=3900
+        arm_modes=[ArmMode.Away]
     ),
     "motion2": Sensor(
         key="motion2",
@@ -419,7 +418,7 @@ sensors = {
     ),
     "garage_motion1": Sensor(
         key="garage_motion1",
-        topic="hass2mqtt/binary_sensor/garasjen_motion/state",
+        topic="hass2mqtt/binary_sensor/garasje_pir_motion/state",
         field="value",
         value=SensorValue.On,
         label="Garage motion",
